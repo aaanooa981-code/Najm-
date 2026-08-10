@@ -2,4 +2,3 @@ python-telegram-bot>=22.0,<23
 requests>=2.31
 edge-tts>=7.0
 imageio-ffmpeg>=0.5
-fal-client>=0.7

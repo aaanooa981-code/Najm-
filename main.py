@@ -1,310 +1,167 @@
-import os, base64, asyncio, logging, tempfile, subprocess, time
+import os, base64, asyncio, tempfile, subprocess, time
 from pathlib import Path
-import requests
-import edge_tts
-import fal_client
-import imageio_ffmpeg
+import requests, edge_tts, imageio_ffmpeg
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-CF_ACCOUNT = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
-CF_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
-FAL_KEY = os.getenv("FAL_KEY", "").strip()
+TOKEN=os.getenv("TELEGRAM_BOT_TOKEN","").strip()
+CF_ACCOUNT=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip()
+CF_TOKEN=os.getenv("CLOUDFLARE_API_TOKEN","").strip()
+ACTIVE_JOBS={}
 
-FAL_MODEL = "fal-ai/minimax/hailuo-2.3-fast/standard/image-to-video"
-SCENE_TIMEOUT_SECONDS = 480
-SCENE_RETRIES = 1
-
-logging.basicConfig(level=logging.INFO)
-ACTIVE_JOBS = {}
-
-CARTOON_STYLE = (
-    "2D animated family cartoon, hand-drawn children's storybook style, "
-    "clean bold outlines, colorful cel shading, friendly expressive faces, "
-    "clearly illustrated people, NOT photorealistic, NOT live action, NOT realistic photography. "
-    "Keep exactly the same character identity, face, hair, clothing colors and age across scenes. "
-)
-
-STYLE_MAP = {
-    "كرتون 2D": CARTOON_STYLE,
-    "كرتون أطفال": (
-        "friendly children's 2D cartoon illustration, cute stylized human characters, "
-        "bright colors, clean outlines, storybook animation, NOT photorealistic. "
-    ),
-    "أنمي": (
-        "family-friendly anime cartoon illustration, clean line art, expressive faces, "
-        "colorful animation frame, NOT photorealistic. "
-    ),
+STYLE={
+"كرتون 2D":"2D children's cartoon, hand-drawn storybook style, clean bold outlines, colorful cel shading, NOT photorealistic, same characters and clothes across scenes.",
+"كرتون أطفال":"cute children's cartoon, bright colors, clean outlines, friendly illustrated people, NOT photorealistic, same characters across scenes.",
+"أنمي":"family-friendly anime cartoon, clean line art, expressive faces, NOT photorealistic, same characters across scenes."
 }
+VOICE={"راوي":("ar-SA-HamedNeural","-8Hz","-5%"),"طفل":("ar-SA-ZariyahNeural","+28Hz","+8%")}
 
-VOICE_MAP = {
-    "راوي": ("ar-SA-HamedNeural", "-8Hz", "-5%"),
-    "طفل": ("ar-SA-ZariyahNeural", "+28Hz", "+8%"),
-    "طفلة": ("ar-SA-ZariyahNeural", "+35Hz", "+10%"),
-}
+def btn(items,p):
+    return InlineKeyboardMarkup([[InlineKeyboardButton(v,callback_data=f"{p}:{v}") for v in items[i:i+2]] for i in range(0,len(items),2)])
 
-def buttons(items, prefix):
-    rows=[]
-    for i in range(0,len(items),2):
-        rows.append([InlineKeyboardButton(v, callback_data=f"{prefix}:{v}") for v in items[i:i+2]])
-    return InlineKeyboardMarkup(rows)
+def cast(idea):
+    return ["راوي","طفل"] if any(x in idea for x in ["طفل","ولد","يحيى"]) else ["راوي"]
 
-def services_ok():
-    return bool(TOKEN and CF_ACCOUNT and CF_TOKEN and FAL_KEY)
-
-def detect_cast(idea):
-    cast=["راوي"]
-    if any(x in idea for x in ["طفل","ولد","صبي","يحيى"]): cast.append("طفل")
-    if any(x in idea for x in ["طفلة","بنت","ميار"]): cast.append("طفلة")
-    if "قطة" in idea or "قط" in idea: cast.append("قطة")
-    return list(dict.fromkeys(cast))
-
-def storyboard(idea, duration, style):
-    count = 2 if duration <= 15 else 3
-    sec = duration / count
-    visual_style = STYLE_MAP.get(style, CARTOON_STYLE)
-    actions = [
-        "The child walks naturally through the home or garden, full body visible, correct walking cycle, natural arm swing, blinking, friendly expression, smooth camera tracking.",
-        "The cartoon characters interact naturally, turn their heads, gesture with hands, walk and react. Stable faces and clothes, no morphing.",
-        "Warm ending with the same cartoon characters walking or interacting together, smooth simple motion and stable identity."
-    ]
-    scenes=[]
-    for i in range(count):
-        scenes.append({
-            "image_prompt": visual_style + f" Story: {idea}. Scene {i+1}/{count}. "
-                "Use the SAME child design in every scene: same face, hairstyle, skin tone, clothes and proportions. "
-                "No text, no captions, no watermark.",
-            "motion_prompt": "Animated 2D cartoon video. " + actions[i % len(actions)] +
-                " Preserve the illustrated cartoon style and exact character identity. "
-                "No realistic humans, no extra limbs, no face replacement.",
-            "narration": f"كان يا ما كان. {idea}" if i == 0 else "وتستمر الأحداث حتى تصل القصة إلى نهاية جميلة.",
-            "seconds": sec
+def scenes(idea,dur,style):
+    n=3 if dur<=15 else 5
+    sec=dur/n
+    out=[]
+    for i in range(n):
+        out.append({
+          "prompt":STYLE[style]+f" Story: {idea}. Scene {i+1}/{n}. Same face, hair, clothes and age. No text, no watermark.",
+          "text":f"كان يا ما كان. {idea}" if i==0 else ("وتستمر الأحداث بحماس ومرح." if i<n-1 else "وفي النهاية انتهى اليوم بلحظة جميلة."),
+          "sec":sec
         })
-    return scenes, detect_cast(idea)
+    return out
 
-def cloudflare_image(prompt, out_path):
-    model="@cf/black-forest-labs/flux-1-schnell"
-    url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/run/{model}"
-    r=requests.post(url, headers={"Authorization":f"Bearer {CF_TOKEN}","Content-Type":"application/json"},
-                    json={"prompt":prompt,"num_steps":4}, timeout=120)
+def cf_image(prompt,path):
+    url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    r=requests.post(url,headers={"Authorization":f"Bearer {CF_TOKEN}","Content-Type":"application/json"},json={"prompt":prompt,"num_steps":4},timeout=120)
     r.raise_for_status()
     if "image/" in r.headers.get("content-type",""):
-        Path(out_path).write_bytes(r.content); return
-    data=r.json(); result=data.get("result",{})
-    if isinstance(result,dict) and result.get("image"):
-        Path(out_path).write_bytes(base64.b64decode(result["image"])); return
-    raise RuntimeError("Cloudflare لم يرجع صورة للمشهد.")
+        Path(path).write_bytes(r.content); return
+    data=r.json().get("result",{})
+    if isinstance(data,dict) and data.get("image"):
+        Path(path).write_bytes(base64.b64decode(data["image"])); return
+    raise RuntimeError("Cloudflare لم يرجع صورة.")
 
-def file_data_uri(path):
-    return "data:image/png;base64," + base64.b64encode(Path(path).read_bytes()).decode()
+def ff(): return imageio_ffmpeg.get_ffmpeg_exe()
 
-async def fal_motion_async(image_path, prompt, out_path, progress_state, scene_no):
-    os.environ["FAL_KEY"]=FAL_KEY
-    last_error=None
-    for attempt in range(SCENE_RETRIES+1):
-        try:
-            progress_state["stage"]=f"تحريك المشهد {scene_no} عبر fal" + (f" — إعادة محاولة {attempt}" if attempt else "")
-            result=await fal_client.subscribe_async(
-                FAL_MODEL,
-                arguments={"prompt":prompt,"image_url":file_data_uri(image_path)},
-                with_logs=False,
-                start_timeout=180,
-                client_timeout=SCENE_TIMEOUT_SECONDS,
-            )
-            video_url=result["video"]["url"]
-            r=await asyncio.to_thread(requests.get, video_url, timeout=180)
-            r.raise_for_status()
-            Path(out_path).write_bytes(r.content)
-            return
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            last_error=e
-            if attempt < SCENE_RETRIES:
-                await asyncio.sleep(3)
-    raise RuntimeError(f"فشل تحريك المشهد {scene_no}: {last_error}")
-
-async def tts(text, role, out_path):
-    voice,pitch,rate=VOICE_MAP.get(role,VOICE_MAP["راوي"])
-    await edge_tts.Communicate(text,voice,pitch=pitch,rate=rate).save(str(out_path))
-
-def ff():
-    return imageio_ffmpeg.get_ffmpeg_exe()
-
-def normalize_video(inp, seconds, aspect, out):
+def motion(img,sec,aspect,i,out):
     w,h=(720,1280) if aspect=="9:16" else ((1280,720) if aspect=="16:9" else (1080,1080))
-    vf=f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps=25,format=yuv420p"
-    subprocess.run([ff(),"-y","-i",str(inp),"-t",str(seconds),"-vf",vf,"-an",str(out)],
-                   check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    fps=25; frames=max(1,int(sec*fps))
+    x="iw/2-(iw/zoom/2)+sin(on/18)*12"
+    y="ih/2-(ih/zoom/2)+sin(on/22)*8"
+    z="min(zoom+0.0012,1.12)" if i%2 else "if(lte(zoom,1.0),1.10,max(1.0,zoom-0.0008))"
+    vf=f"scale={w*2}:{h*2}:force_original_aspect_ratio=increase,crop={w*2}:{h*2},zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={w}x{h}:fps={fps},format=yuv420p"
+    subprocess.run([ff(),"-y","-loop","1","-i",str(img),"-vf",vf,"-t",str(sec),"-an",str(out)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
-def concat_videos(clips,out_path):
-    listing=Path(out_path).with_suffix(".txt")
-    listing.write_text("\n".join(f"file '{Path(c).as_posix()}'" for c in clips),encoding="utf-8")
-    subprocess.run([ff(),"-y","-f","concat","-safe","0","-i",str(listing),"-c","copy",str(out_path)],
-                   check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+def concat(clips,out):
+    txt=Path(out).with_suffix(".txt"); txt.write_text("\n".join(f"file '{Path(c).as_posix()}'" for c in clips),encoding="utf-8")
+    subprocess.run([ff(),"-y","-f","concat","-safe","0","-i",str(txt),"-c","copy",str(out)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
-def mux_audio(video,audio,out):
-    subprocess.run([ff(),"-y","-i",str(video),"-i",str(audio),"-c:v","copy","-c:a","aac","-shortest","-movflags","+faststart",str(out)],
-                   check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+async def voice(text,role,out):
+    v,p,r=VOICE.get(role,VOICE["راوي"])
+    await edge_tts.Communicate(text,v,pitch=p,rate=r).save(str(out))
 
-def fmt_time(seconds):
-    seconds=max(0,int(seconds))
-    return f"{seconds//60:02d}:{seconds%60:02d}"
+def mux(video,audio,out):
+    subprocess.run([ff(),"-y","-i",str(video),"-i",str(audio),"-c:v","copy","-c:a","aac","-shortest",str(out)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
-async def progress_clock(message,state,started,stop_event):
-    while not stop_event.is_set():
-        txt=("🎬 Najm Video AI v3.4\n"
-             f"⏱ الوقت: {fmt_time(time.time()-started)}\n"
-             f"📊 التقدم التقريبي: {state['pct']}%\n"
-             f"⚙️ {state['stage']}\n"
-             f"🎞 المشاهد المكتملة: {state['done']}/{state['total']}\n\n"
-             "يمكنك الإلغاء في أي وقت بـ /cancel")
-        try: await message.edit_text(txt)
-        except Exception: pass
-        try: await asyncio.wait_for(stop_event.wait(), timeout=10)
+def fmt(t): t=int(t); return f"{t//60:02d}:{t%60:02d}"
+
+async def clock(msg,state,start,stop):
+    while not stop.is_set():
+        try: await msg.edit_text(f"🎬 Najm Video AI v3.5 FREE\n⏱ {fmt(time.time()-start)}\n📊 {state['pct']}%\n⚙️ {state['stage']}\n🎞 {state['done']}/{state['total']}\n\n🆓 بدون fal")
+        except: pass
+        try: await asyncio.wait_for(stop.wait(),10)
         except asyncio.TimeoutError: pass
 
-async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def start(update,context):
     context.user_data.clear()
-    await update.message.reply_text(
-        "🎬 Najm Video AI v3.4 ROBUST FAST\n"
-        + ("✅ الخدمات جاهزة" if services_ok() else "❌ يوجد مفتاح ناقص")
-        + "\n\nالنسخة الجديدة تمنع التعليق الطويل وتدعم /cancel الحقيقي.\nأرسل القصة مباشرة."
-    )
+    ok=bool(TOKEN and CF_ACCOUNT and CF_TOKEN)
+    await update.message.reply_text("🎬 Najm Video AI v3.5 FREE\n"+("✅ جاهز" if ok else "❌ مفتاح ناقص")+"\n\n🆓 لا يستخدم fal. أرسل القصة.")
 
-async def cancel(update:Update,context:ContextTypes.DEFAULT_TYPE):
-    chat_id=update.effective_chat.id
-    task=ACTIVE_JOBS.get(chat_id)
-    if task and not task.done():
-        task.cancel()
-        await update.message.reply_text("🛑 تم طلب إلغاء الفيديو الجاري.")
-    else:
-        context.user_data.clear()
-        await update.message.reply_text("لا يوجد فيديو جارٍ الآن.")
+async def cancel(update,context):
+    t=ACTIVE_JOBS.get(update.effective_chat.id)
+    if t and not t.done(): t.cancel(); await update.message.reply_text("🛑 تم طلب الإلغاء.")
+    else: context.user_data.clear(); await update.message.reply_text("لا يوجد فيديو جارٍ.")
 
-async def text_handler(update:Update,context:ContextTypes.DEFAULT_TYPE):
-    chat_id=update.effective_chat.id
-    job=ACTIVE_JOBS.get(chat_id)
-    if job and not job.done():
-        return await update.message.reply_text("يوجد فيديو قيد الإنشاء. استخدم /cancel لإلغائه أولًا.")
-    if context.user_data.get("stage"):
-        return await update.message.reply_text("أكمل الاختيارات بالأزرار أو /cancel.")
-    context.user_data["idea"]=update.message.text.strip()
-    context.user_data["stage"]="style"
-    await update.message.reply_text("🎨 اختر النمط:",reply_markup=buttons(["كرتون 2D","كرتون أطفال","أنمي"],"style"))
+async def text(update,context):
+    if ACTIVE_JOBS.get(update.effective_chat.id) and not ACTIVE_JOBS[update.effective_chat.id].done():
+        return await update.message.reply_text("يوجد فيديو جارٍ. استخدم /cancel.")
+    context.user_data={"idea":update.message.text.strip(),"stage":"style"}
+    await update.message.reply_text("🎨 اختر النمط:",reply_markup=btn(["كرتون 2D","كرتون أطفال","أنمي"],"style"))
 
-async def render_job(chat_id, bot, params):
-    idea,style,duration,aspect=params
-    scenes,cast=storyboard(idea,duration,style)
-    started=time.time()
-    state={"pct":3,"stage":"بدء المشروع","done":0,"total":len(scenes)}
-    progress_message=await bot.send_message(chat_id,"🎬 بدء إنشاء الفيديو...")
-    stop_event=asyncio.Event()
-    clock=asyncio.create_task(progress_clock(progress_message,state,started,stop_event))
+async def render(chat,bot,params):
+    idea,style,dur,aspect=params; ss=scenes(idea,dur,style); startt=time.time()
+    state={"pct":3,"stage":"بدء","done":0,"total":len(ss)}
+    msg=await bot.send_message(chat,"🎬 بدء الإنشاء المجاني...")
+    stop=asyncio.Event(); ct=asyncio.create_task(clock(msg,state,startt,stop))
     try:
-        with tempfile.TemporaryDirectory() as td_str:
-            td=Path(td_str)
-            async def scene_job(i,scene):
-                state["stage"]=f"إنشاء الصورة الكرتونية للمشهد {i}"
-                img=td/f"scene{i}.png"
-                await asyncio.wait_for(asyncio.to_thread(cloudflare_image,scene["image_prompt"],img),timeout=150)
-                state["pct"]=10+int(20*i/len(scenes))
-                raw=td/f"motion{i}.mp4"
-                await fal_motion_async(img,scene["motion_prompt"],raw,state,i)
-                clip=td/f"clip{i}.mp4"
-                await asyncio.to_thread(normalize_video,raw,scene["seconds"],aspect,clip)
-                state["done"]+=1
-                state["pct"]=30+int(50*state["done"]/len(scenes))
+        with tempfile.TemporaryDirectory() as td:
+            td=Path(td)
+            async def one(i,s):
+                state["stage"]=f"إنشاء الصورة {i}"
+                img=td/f"s{i}.png"; await asyncio.to_thread(cf_image,s["prompt"],img)
+                state["pct"]=10+int(45*i/len(ss))
+                state["stage"]=f"تحريك المشهد {i}"
+                clip=td/f"c{i}.mp4"; await asyncio.to_thread(motion,img,s["sec"],aspect,i,clip)
+                state["done"]+=1; state["pct"]=55+int(25*state["done"]/len(ss))
                 return clip
-
-            results=await asyncio.gather(*[scene_job(i,s) for i,s in enumerate(scenes,1)],return_exceptions=True)
-            clips=[]; errors=[]
-            for r in results:
-                if isinstance(r,Exception): errors.append(str(r))
-                else: clips.append(r)
-
-            if not clips:
-                raise RuntimeError("فشلت كل المشاهد. " + " | ".join(errors[:2]))
-            if errors:
-                await bot.send_message(chat_id,"⚠️ بعض المشاهد فشلت، سأكمل بالمشاهد الناجحة.")
-
+            res=await asyncio.gather(*[one(i,s) for i,s in enumerate(ss,1)],return_exceptions=True)
+            clips=[r for r in res if not isinstance(r,Exception)]
+            if not clips: raise RuntimeError("فشلت كل المشاهد.")
             state["pct"]=84; state["stage"]="دمج المشاهد"
-            silent=td/"silent.mp4"
-            await asyncio.to_thread(concat_videos,clips,silent)
-
-            state["pct"]=89; state["stage"]="تجهيز الصوت"
-            role="طفل" if "طفل" in cast else "راوي"
-            voice_file=td/"voice.mp3"
-            narration=" ".join(s["narration"] for s in scenes)
-            await asyncio.wait_for(tts(narration,role,voice_file),timeout=120)
-
-            state["pct"]=95; state["stage"]="تركيب الفيديو النهائي"
-            final=td/"final.mp4"
-            await asyncio.to_thread(mux_audio,silent,voice_file,final)
-
-            state["pct"]=100; state["stage"]="اكتمل"
-            stop_event.set()
-            try: await clock
-            except Exception: pass
-            try:
-                await progress_message.edit_text(f"✅ اكتمل الفيديو\n⏱ الوقت الإجمالي: {fmt_time(time.time()-started)}\n📊 100%")
-            except Exception: pass
-            with final.open("rb") as f:
-                await bot.send_video(chat_id,video=f,caption="✅ تم إنشاء الفيديو الكرتوني")
+            silent=td/"silent.mp4"; await asyncio.to_thread(concat,clips,silent)
+            state["pct"]=90; state["stage"]="الصوت العربي"
+            vf=td/"voice.mp3"; await voice(" ".join(s["text"] for s in ss),"طفل" if "طفل" in cast(idea) else "راوي",vf)
+            state["pct"]=96; state["stage"]="التركيب النهائي"
+            final=td/"final.mp4"; await asyncio.to_thread(mux,silent,vf,final)
+            state["pct"]=100; stop.set()
+            try: await ct
+            except: pass
+            await msg.edit_text(f"✅ اكتمل\n⏱ {fmt(time.time()-startt)}\n📊 100%")
+            with final.open("rb") as f: await bot.send_video(chat,video=f,caption="✅ فيديو كرتوني مجاني 🆓")
     except asyncio.CancelledError:
-        stop_event.set()
-        try: await clock
-        except Exception: pass
-        try: await progress_message.edit_text("🛑 تم إلغاء عملية إنشاء الفيديو.")
-        except Exception: pass
+        stop.set()
+        try: await ct
+        except: pass
+        try: await msg.edit_text("🛑 تم الإلغاء.")
+        except: pass
         raise
     except Exception as e:
-        stop_event.set()
-        try: await clock
-        except Exception: pass
-        try: await progress_message.edit_text(f"❌ توقف الإنشاء:\n{e}")
-        except Exception: await bot.send_message(chat_id,f"❌ توقف الإنشاء:\n{e}")
+        stop.set()
+        try: await ct
+        except: pass
+        try: await msg.edit_text(f"❌ خطأ: {e}")
+        except: pass
     finally:
-        ACTIVE_JOBS.pop(chat_id,None)
+        ACTIVE_JOBS.pop(chat,None)
 
-async def callback(update:Update,context:ContextTypes.DEFAULT_TYPE):
-    q=update.callback_query
-    await q.answer()
-    key,val=q.data.split(":",1)
-    if key=="style":
-        context.user_data["style"]=val; context.user_data["stage"]="duration"
-        await q.edit_message_text("⏱ اختر المدة:",reply_markup=buttons(["15","30"],"duration"))
-    elif key=="duration":
-        context.user_data["duration"]=int(val); context.user_data["stage"]="aspect"
-        await q.edit_message_text("📐 اختر المقاس:",reply_markup=buttons(["9:16","16:9","1:1"],"aspect"))
-    elif key=="aspect":
-        context.user_data["aspect"]=val; context.user_data["stage"]="ready"
-        scenes,cast=storyboard(context.user_data["idea"],context.user_data["duration"],context.user_data["style"])
-        await q.edit_message_text(
-            f"جاهز ✅\nالمشاهد: {len(scenes)}\nالشخصيات: {'، '.join(cast)}\n\n"
-            "هذه النسخة تلغي أي مشهد يتجاوز المهلة بدل أن تعلق ساعات.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🚀 إنشاء",callback_data="render:go")]])
-        )
-    elif key=="render":
-        chat_id=q.message.chat_id
-        existing=ACTIVE_JOBS.get(chat_id)
-        if existing and not existing.done():
-            return await q.edit_message_text("يوجد فيديو قيد الإنشاء. استخدم /cancel أولًا.")
-        params=(context.user_data["idea"],context.user_data["style"],context.user_data["duration"],context.user_data["aspect"])
+async def cb(update,context):
+    q=update.callback_query; await q.answer()
+    k,v=q.data.split(":",1)
+    if k=="style":
+        context.user_data["style"]=v; context.user_data["stage"]="duration"
+        await q.edit_message_text("⏱ اختر المدة:",reply_markup=btn(["15","30"],"duration"))
+    elif k=="duration":
+        context.user_data["duration"]=int(v); context.user_data["stage"]="aspect"
+        await q.edit_message_text("📐 اختر المقاس:",reply_markup=btn(["9:16","16:9","1:1"],"aspect"))
+    elif k=="aspect":
+        context.user_data["aspect"]=v; context.user_data["stage"]="ready"
+        await q.edit_message_text("🆓 جاهز — بدون fal\nالحركة سينمائية للصورة وليست حركة أطراف AI.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🚀 إنشاء مجاني",callback_data="render:go")]]))
+    elif k=="render":
+        chat=q.message.chat_id
+        p=(context.user_data["idea"],context.user_data["style"],context.user_data["duration"],context.user_data["aspect"])
         context.user_data.clear()
-        await q.edit_message_text("✅ تم إرسال الطلب للمحرك. سيظهر العداد الآن.")
-        task=asyncio.create_task(render_job(chat_id,context.bot,params))
-        ACTIVE_JOBS[chat_id]=task
+        await q.edit_message_text("✅ بدأ الوضع المجاني.")
+        t=asyncio.create_task(render(chat,context.bot,p)); ACTIVE_JOBS[chat]=t
 
 def main():
     if not TOKEN: raise RuntimeError("TELEGRAM_BOT_TOKEN غير موجود.")
     app=Application.builder().token(TOKEN).concurrent_updates(True).build()
-    app.add_handler(CommandHandler("start",start))
-    app.add_handler(CommandHandler("cancel",cancel))
-    app.add_handler(CallbackQueryHandler(callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text_handler))
+    app.add_handler(CommandHandler("start",start)); app.add_handler(CommandHandler("cancel",cancel))
+    app.add_handler(CallbackQueryHandler(cb)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text))
     app.run_polling(drop_pending_updates=True)
 
-if __name__=="__main__":
-    main()
+if __name__=="__main__": main()
