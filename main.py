@@ -71,7 +71,7 @@ def fmt(t): t=int(t); return f"{t//60:02d}:{t%60:02d}"
 
 async def clock(msg,state,start,stop):
     while not stop.is_set():
-        try: await msg.edit_text(f"🎬 Najm Video AI v3.5 FREE\n⏱ {fmt(time.time()-start)}\n📊 {state['pct']}%\n⚙️ {state['stage']}\n🎞 {state['done']}/{state['total']}\n\n🆓 بدون fal")
+        try: await msg.edit_text(f"🎬 Najm Video AI v3.5.1 FREE FIX\n⏱ {fmt(time.time()-start)}\n📊 {state['pct']}%\n⚙️ {state['stage']}\n🎞 {state['done']}/{state['total']}\n\n🆓 بدون fal")
         except: pass
         try: await asyncio.wait_for(stop.wait(),10)
         except asyncio.TimeoutError: pass
@@ -79,7 +79,7 @@ async def clock(msg,state,start,stop):
 async def start(update,context):
     context.user_data.clear()
     ok=bool(TOKEN and CF_ACCOUNT and CF_TOKEN)
-    await update.message.reply_text("🎬 Najm Video AI v3.5 FREE\n"+("✅ جاهز" if ok else "❌ مفتاح ناقص")+"\n\n🆓 لا يستخدم fal. أرسل القصة.")
+    await update.message.reply_text("🎬 Najm Video AI v3.5.1 FREE FIX\n"+("✅ جاهز" if ok else "❌ مفتاح ناقص")+"\n\n🆓 لا يستخدم fal. أرسل القصة.")
 
 async def cancel(update,context):
     t=ACTIVE_JOBS.get(update.effective_chat.id)
@@ -89,7 +89,9 @@ async def cancel(update,context):
 async def text(update,context):
     if ACTIVE_JOBS.get(update.effective_chat.id) and not ACTIVE_JOBS[update.effective_chat.id].done():
         return await update.message.reply_text("يوجد فيديو جارٍ. استخدم /cancel.")
-    context.user_data={"idea":update.message.text.strip(),"stage":"style"}
+    context.user_data.clear()
+    context.user_data["idea"]=update.message.text.strip()
+    context.user_data["stage"]="style"
     await update.message.reply_text("🎨 اختر النمط:",reply_markup=btn(["كرتون 2D","كرتون أطفال","أنمي"],"style"))
 
 async def render(chat,bot,params):
@@ -157,11 +159,22 @@ async def cb(update,context):
         await q.edit_message_text("✅ بدأ الوضع المجاني.")
         t=asyncio.create_task(render(chat,context.bot,p)); ACTIVE_JOBS[chat]=t
 
+
+async def error_handler(update, context):
+    try:
+        msg = f"❌ حصل خطأ داخل البوت:\n{context.error}"
+        if update and getattr(update, "effective_chat", None):
+            await context.bot.send_message(update.effective_chat.id, msg)
+    except Exception:
+        pass
+
+
 def main():
     if not TOKEN: raise RuntimeError("TELEGRAM_BOT_TOKEN غير موجود.")
     app=Application.builder().token(TOKEN).concurrent_updates(True).build()
     app.add_handler(CommandHandler("start",start)); app.add_handler(CommandHandler("cancel",cancel))
     app.add_handler(CallbackQueryHandler(cb)); app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text))
+    app.add_error_handler(error_handler)
     app.run_polling(drop_pending_updates=True)
 
 if __name__=="__main__": main()
