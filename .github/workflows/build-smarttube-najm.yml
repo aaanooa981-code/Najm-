@@ -1,0 +1,159 @@
+name: Build NAJM SmartTube 32.03 APK
+on:
+  push:
+    branches:
+      - smarttube-32-03-youtube-home-build
+  workflow_dispatch:
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Fetch exact SmartTube 32.03 source and dependencies
+        run: |
+          git clone --recurse-submodules https://github.com/yuliskov/SmartTube.git SmartTube
+          cd SmartTube
+          git checkout aafa3bc
+          git submodule update --init --recursive
+      - name: Apply YouTube-like home, preserve playback and data engine
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("SmartTube")
+          src=root/"smarttubetv/src/main"
+          browse=src/"java/com/liskovsoft/smartyoutubetv2/tv/ui/browse/BrowseFragment.java"
+          activity=src/"java/com/liskovsoft/smartyoutubetv2/tv/ui/browse/BrowseActivity.java"
+          s=browse.read_text()
+          anchor='    private CrashRestorer mCrashRestorer;'
+          addition='''    private CrashRestorer mCrashRestorer;
+              private Runnable mNajmSectionsChanged;
+              public void setOnSectionsChangedListener(Runnable callback) {
+                  mNajmSectionsChanged = callback;
+                  notifyNajmSectionsChanged();
+              }
+              public java.util.List<String> getHomeNavigationSections() {
+                  java.util.List<String> names = new java.util.ArrayList<>();
+                  if (mSectionRowAdapter != null) {
+                      for (int i = 0; i < mSectionRowAdapter.size(); i++) {
+                          PageRow p = (PageRow) mSectionRowAdapter.get(i);
+                          names.add(p.getHeaderItem().getName().toString());
+                      }
+                  }
+                  return names;
+              }
+              public void navigateFromTopBar(int i) {
+                  selectSection(i, true);
+                  startHeadersTransitionSafe(false);
+              }
+              public void showNavigationFromTopBar() {
+                  startHeadersTransitionSafe(true);
+              }
+              private void notifyNajmSectionsChanged() {
+                  if (mNajmSectionsChanged != null) mNajmSectionsChanged.run();
+              }'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,addition,1)
+          s=s.replace('        mSectionRowAdapter.clear();\n    }\n\n    @Override\n    public void updateSection(VideoGroup group)', '        mSectionRowAdapter.clear();\n        notifyNajmSectionsChanged();\n    }\n\n    @Override\n    public void updateSection(VideoGroup group)',1)
+          s=s.replace('            mSectionRowAdapter.add(index, pageRow);\n        }\n    }\n\n    private void removeHeader','            mSectionRowAdapter.add(index, pageRow);\n        }\n        notifyNajmSectionsChanged();\n    }\n\n    private void removeHeader',1)
+          s=s.replace('            mSectionRowAdapter.remove(foundHeader);\n        }\n    }\n\n    @Override\n    public void clearSection', '            mSectionRowAdapter.remove(foundHeader);\n            notifyNajmSectionsChanged();\n        }\n    }\n\n    @Override\n    public void clearSection',1)
+          s=s.replace('        mCrashRestorer.restorePlayback();','''        mCrashRestorer.restorePlayback();
+                  mHandler.postDelayed(() -> {
+                      startHeadersTransitionSafe(false);
+                      if (getTitleView() != null) getTitleView().setVisibility(View.GONE);
+                  }, 350);''',1)
+          s=s.replace('            getTitleView().setVisibility(View.VISIBLE);','            getTitleView().setVisibility(View.GONE);',1)
+          browse.write_text(s)
+          a=activity.read_text()
+          a=a.replace('            setContentView(R.layout.fragment_main);','            setContentView(R.layout.fragment_main);\n            initializeNajmHome();',1)
+          a=a.replace('setTheme(browseThemeResId);','setTheme(R.style.App_Theme_YouTubeHome_Browse);',1)
+          meth='''    private BrowseFragment mNajmBrowse;
+              private android.widget.LinearLayout mNajmChips;
+              private int mNajmIndex;
+              private void initializeNajmHome() {
+                  mNajmBrowse = (BrowseFragment) getSupportFragmentManager().findFragmentById(R.id.main_frame);
+                  mNajmChips = findViewById(R.id.najm_chips);
+                  findViewById(R.id.najm_menu).setOnClickListener(v -> mNajmBrowse.showNavigationFromTopBar());
+                  findViewById(R.id.najm_search).setOnClickListener(v ->
+                      com.liskovsoft.smartyoutubetv2.common.app.presenters.SearchPresenter.instance(this).startSearch(null));
+                  findViewById(R.id.najm_account).setOnClickListener(v ->
+                      com.liskovsoft.smartyoutubetv2.common.app.presenters.dialogs.AccountSelectionPresenter.instance(this).nextAccountOrDialog());
+                  mNajmBrowse.setOnSectionsChangedListener(() -> runOnUiThread(this::refreshNajmChips));
+              }
+              private void refreshNajmChips() {
+                  if (mNajmBrowse == null || mNajmChips == null) return;
+                  java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
+                  mNajmChips.removeAllViews();
+                  int i=0;
+                  for (String name : names) {
+                      final int idx = i++;
+                      android.widget.TextView chip = new android.widget.TextView(this);
+                      chip.setText(name);
+                      chip.setTextSize(15);
+                      chip.setSingleLine(true);
+                      chip.setGravity(android.view.Gravity.CENTER);
+                      chip.setPadding(24,0,24,0);
+                      chip.setTextColor(android.graphics.Color.WHITE);
+                      chip.setBackgroundResource(R.drawable.najm_chip);
+                      chip.setFocusable(true);
+                      chip.setSelected(idx==mNajmIndex);
+                      android.widget.LinearLayout.LayoutParams p = new android.widget.LinearLayout.LayoutParams(-2,48);
+                      p.setMargins(5,3,5,3);
+                      mNajmChips.addView(chip,p);
+                      chip.setOnClickListener(v -> {
+                          mNajmIndex=idx;
+                          mNajmBrowse.navigateFromTopBar(idx);
+                          refreshNajmChips();
+                      });
+                  }
+              }
+              @Override protected void onDestroy() {
+                  if (mNajmBrowse!=null) mNajmBrowse.setOnSectionsChangedListener(null);
+                  super.onDestroy();
+              }
+          '''
+          at=a.rfind('}')
+          assert at != -1
+          a=a[:at]+meth+a[at:]
+          activity.write_text(a)
+          (src/"res/layout/fragment_main.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:layoutDirection="ltr" android:background="#0F0F0F">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="60dp" android:paddingStart="14dp" android:paddingEnd="14dp" android:orientation="horizontal" android:gravity="center_vertical">
+              <TextView android:id="@+id/najm_menu" android:layout_width="52dp" android:layout_height="48dp" android:text="☰" android:textSize="27sp" android:textColor="#FFFFFF" android:gravity="center" android:clickable="true" android:focusable="true" android:contentDescription="القائمة"/>
+              <TextView android:layout_width="43dp" android:layout_height="30dp" android:gravity="center" android:background="@drawable/najm_play_logo" android:text="▶" android:textSize="20sp" android:textColor="#FFFFFF"/>
+              <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SmartTube" android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold" android:layout_marginStart="9dp" android:layout_marginEnd="18dp"/>
+              <TextView android:id="@+id/najm_search" android:layout_width="0dp" android:layout_weight="1" android:layout_height="44dp" android:background="@drawable/najm_search_bg" android:text="⌕   بحث في الفيديوهات" android:textColor="#B3B3B3" android:textSize="17sp" android:gravity="center_vertical" android:paddingStart="16dp" android:clickable="true" android:focusable="true" android:contentDescription="البحث"/>
+              <TextView android:id="@+id/najm_account" android:layout_width="48dp" android:layout_height="44dp" android:layout_marginStart="12dp" android:text="◉" android:textColor="#FFFFFF" android:textSize="28sp" android:gravity="center" android:clickable="true" android:focusable="true" android:contentDescription="الحساب"/>
+            </LinearLayout>
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="54dp" android:fillViewport="false" android:scrollbars="none">
+              <LinearLayout android:id="@+id/najm_chips" android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp"/>
+            </HorizontalScrollView>
+            <fragment android:id="@+id/main_frame" android:name="com.liskovsoft.smartyoutubetv2.tv.ui.browse.BrowseFragment" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+          </LinearLayout>''')
+          (src/"res/drawable/najm_play_logo.xml").write_text('''<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle"><solid android:color="#FF0033"/><corners android:radius="7dp"/></shape>''')
+          (src/"res/drawable/najm_search_bg.xml").write_text('''<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle"><solid android:color="#1F1F1F"/><stroke android:width="1dp" android:color="#454545"/><corners android:radius="22dp"/></shape>''')
+          (src/"res/drawable/najm_chip.xml").write_text('''<selector xmlns:android="http://schemas.android.com/apk/res/android"><item android:state_selected="true"><shape><solid android:color="#555555"/><corners android:radius="8dp"/></shape></item><item><shape><solid android:color="#252525"/><corners android:radius="8dp"/></shape></item></selector>''')
+          (src/"res/values/najm_home_theme.xml").write_text('''<resources><style name="App.Theme.YouTubeHome.Browse" parent="App.Theme.DarkGrey.Browse"><item name="android:windowBackground">#0F0F0F</item><item name="brandColor">#0F0F0F</item><item name="brandAccentColor">#FF0033</item><item name="shelfBackground">#0F0F0F</item><item name="cardDefaultBackground">#0F0F0F</item><item name="cardSelectedBackground">#292929</item></style></resources>''')
+          gradle=root/"smarttubetv/build.gradle"
+          t=gradle.read_text()
+          assert t.count('applicationId "org.smarttube.beta"') == 1
+          gradle.write_text(t.replace('applicationId "org.smarttube.beta"','applicationId "org.smarttube.najm"',1))
+          print("Successfully applied home-only modifications")
+          PY
+      - name: Build installable debug APK
+        run: |
+          cd SmartTube
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleStbetaDebug --stacktrace
+      - name: Publish APK artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAJM-SmartTube-32.03-build
+          path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
+          if-no-files-found: warn
