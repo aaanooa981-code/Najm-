@@ -149,6 +149,97 @@ jobs:
           gradle.write_text(t.replace('applicationId "org.smarttube.beta"','applicationId "org.smarttube.najm"',1))
           print("Successfully applied home-only modifications")
           PY
+      - name: Fix keyboard arrow, Go, Search, Next and Enter to submit searches
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          pkg=Path('SmartTube/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv')
+          search= pkg/'ui/mod/leanback/search/SearchSupportFragment.java'
+          fragment=pkg/'ui/search/tags/SearchTagsFragment.java'
+          s=search.read_text()
+          # Dedicated on-screen Go arrow; also honor search/next/done actions on other keyboards.
+          needle='import android.view.ViewGroup;'
+          assert s.count(needle)==1
+          s=s.replace(needle,needle+'''
+          import android.view.KeyEvent;
+          import android.view.inputmethod.EditorInfo;''',1)
+          needle='        mSearchTextEditor.setSelectAllOnFocus(true); // Select all on focus (easy clear previous search)'
+          assert s.count(needle)==1
+          s=s.replace(needle,needle+'''
+                  // NAJM: Show keyboard arrow/go and actually send the request when tapped.
+                  mSearchTextEditor.setImeOptions(EditorInfo.IME_ACTION_GO | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+                  mSearchTextEditor.setSingleLine(true);
+                  mSearchTextEditor.setOnEditorActionListener((field, actionId, event) -> {
+                      int action = actionId & EditorInfo.IME_MASK_ACTION;
+                      boolean supportedAction = action == EditorInfo.IME_ACTION_GO
+                              || action == EditorInfo.IME_ACTION_SEARCH
+                              || action == EditorInfo.IME_ACTION_NEXT
+                              || action == EditorInfo.IME_ACTION_DONE;
+                      boolean physicalEnter = event != null
+                              && (event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                                  || event.getKeyCode() == KeyEvent.KEYCODE_NUMPAD_ENTER);
+                      if (!supportedAction && !physicalEnter) return false;
+                      if (event == null || event.getAction() == KeyEvent.ACTION_UP) {
+                          executeNajmKeyboardSearch();
+                      }
+                      return true;
+                  });
+                  mSearchTextEditor.setOnKeyListener((v, keyCode, event) -> {
+                      if (keyCode == KeyEvent.KEYCODE_ENTER
+                              || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                          if (event.getAction() == KeyEvent.ACTION_UP) {
+                              executeNajmKeyboardSearch();
+                          }
+                          return true;
+                      }
+                      return false;
+                  });''',1)
+          needle='    private void resultsAvailable() {'
+          assert s.count(needle)==1
+          s=s.replace(needle,'''    private void executeNajmKeyboardSearch() {
+                  if (mSearchTextEditor == null) return;
+                  String query = mSearchTextEditor.getText().toString().trim();
+                  if (query.isEmpty()) return;
+                  Helpers.hideKeyboard(getContext(), mSearchTextEditor);
+                  submitQuery(query);
+              }
+
+          '''+needle,1)
+          search.write_text(s)
+          s=fragment.read_text()
+          needle='    private CrashRestorer mCrashRestorer;'
+          assert s.count(needle)==1
+          s=s.replace(needle,needle+'\n    private boolean mNajmFocusSubmittedResults;',1)
+          before='''        if (mSearchData.isFocusOnResultsEnabled() && !TextUtils.isEmpty(mNewQuery)) {
+                      super.focusOnResults();
+                      if (getRowsSupportFragment() != null) {
+                          // Move selection to the videos (second row)
+                          getRowsSupportFragment().setSelectedPosition(findResultsIndex());
+                      }
+                  }'''
+          assert s.count(before)==1, 'SearchTagsFragment focus override unexpected'
+          after='''        if ((mSearchData.isFocusOnResultsEnabled() || mNajmFocusSubmittedResults)
+                          && !TextUtils.isEmpty(mNewQuery)) {
+                      int resultsIndex = findResultsIndex();
+                      if (resultsIndex >= 0 && getRowsSupportFragment() != null) {
+                          super.focusOnResults();
+                          getRowsSupportFragment().setSelectedPosition(resultsIndex);
+                          mNajmFocusSubmittedResults = false;
+                      }
+                  }'''
+          s=s.replace(before,after,1)
+          needle='''        mNewQuery = query;
+                  super.submitQuery(query);'''
+          assert s.count(needle)==1
+          s=s.replace(needle,'''        mNewQuery = query;
+                  mNajmFocusSubmittedResults = !TextUtils.isEmpty(query);
+                  super.submitQuery(query);''',1)
+          fragment.write_text(s)
+          # Verify only search UI files were changed; playback/data sources untouched.
+          assert 'IME_ACTION_GO' in search.read_text()
+          assert 'mNajmFocusSubmittedResults' in fragment.read_text()
+          print('Applied IME submit handling and results focus for SmartTube 32.03')
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
