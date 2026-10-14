@@ -829,15 +829,12 @@ jobs:
               'mNajmSeekBar.update(position,duration,mPlaybackFragment.najmBuffered());',s,count=1)
           assert count==1, 'Could not replace old slider update'
 
-          old='''                          mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");'''
+          old='mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");'
           assert s.count(old)==1
-          s=s.replace(old,old+'''
-                          if(mNajmTitle != null)mNajmTitle.setText(mPlaybackFragment.najmVideoTitle());''',1)
-          old='''                  mNajmSeekBar = findViewById(R.id.najm_player_seekbar);'''
+          s=s.replace(old,old+'\n                          if(mNajmTitle != null)mNajmTitle.setText(mPlaybackFragment.najmVideoTitle());',1)
+          old='mNajmSeekBar = findViewById(R.id.najm_player_seekbar);'
           assert s.count(old)==1
-          s=s.replace(old,old+'''
-                  mNajmTitle=findViewById(R.id.najm_player_title);
-                  findViewById(R.id.najm_player_back).setOnClickListener(v -> onBackPressed());''',1)
+          s=s.replace(old,old+'\n                  mNajmTitle=findViewById(R.id.najm_player_title);\n                  findViewById(R.id.najm_player_back).setOnClickListener(v -> onBackPressed());',1)
           start=s.index('                  mNajmSeekBar.setOnSeekBarChangeListener(')
           end=s.index('                  mNajmGesture =',start)
           s=s[:start]+'''                  mNajmSeekBar.setSeekListener(new NajmSeekTimeline.SeekListener() {
