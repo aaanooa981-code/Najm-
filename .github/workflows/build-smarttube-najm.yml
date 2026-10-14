@@ -240,6 +240,274 @@ jobs:
           assert 'mNajmFocusSubmittedResults' in fragment.read_text()
           print('Applied IME submit handling and results focus for SmartTube 32.03')
           PY
+      - name: Create NAJM Tube player controls, gestures, brand icon and name
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zlib, struct, math
+          root=Path('SmartTube/smarttubetv/src/main')
+          java=root/'java/com/liskovsoft/smartyoutubetv2/tv/ui/playback'
+          fragment=java/'PlaybackFragment.java'
+          f=fragment.read_text()
+          # Reuse original SmartTube playback transport actions; seek duration already exactly 10s.
+          anchor='    private int getPlayerRowIndex() {'
+          assert f.count(anchor)==1
+          methods='''    // NAJM Tube player buttons delegate to the original SmartTube player glue.
+              public void najmTogglePlayback() {
+                  if (mPlayerGlue != null) mPlayerGlue.togglePlayback();
+              }
+              public void najmSeekTen(boolean forward) {
+                  if (mPlayerGlue == null) return;
+                  if (forward) mPlayerGlue.fastForward(); else mPlayerGlue.rewind();
+              }
+              public boolean najmPlaying() {
+                  return mPlayerGlue != null && mPlayerGlue.isPlaying();
+              }
+              public long najmPosition() { return mPlayer != null ? Math.max(0, mPlayer.getCurrentPosition()) : 0; }
+              public long najmDuration() { return mPlayer != null ? mPlayer.getDuration() : -1; }
+              public void najmSeekTo(long milliseconds) {
+                  if (mPlayer == null || milliseconds < 0) return;
+                  long duration = najmDuration();
+                  mPlayer.seekTo(duration > 0 ? Math.min(duration, milliseconds) : milliseconds);
+              }
+
+          '''
+          f=f.replace(anchor,methods+anchor,1)
+          # Force 10 seconds even if an old configuration preferred a longer increment.
+          anchor='.seekSeconds(getPlayerData().getSeekIncrementMs() / 1_000)'
+          assert f.count(anchor)==1
+          f=f.replace(anchor,'.seekSeconds(10)',1)
+          fragment.write_text(f)
+
+          act=java/'PlaybackActivity.java'
+          s=act.read_text()
+          anchor='import android.view.MotionEvent;'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+'''
+          import android.view.GestureDetector;
+          import android.view.View;
+          import android.view.Gravity;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.widget.SeekBar;
+          import android.widget.TextView;
+          import java.util.Locale;''',1)
+          anchor='    private boolean mIsBackPressed;'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+'''
+              private GestureDetector mNajmGesture;
+              private View mNajmControls;
+              private TextView mNajmToggle;
+              private TextView mNajmTiming;
+              private SeekBar mNajmSeekBar;
+              private final Handler mNajmHandler = new Handler(Looper.getMainLooper());
+              private boolean mNajmDragging;
+              private final Runnable mNajmDismiss = () -> {
+                  if (mNajmControls != null) mNajmControls.setVisibility(View.GONE);
+              };
+              private final Runnable mNajmRefresh = new Runnable() {
+                  @Override public void run() {
+                      if (mPlaybackFragment != null && mNajmControls != null) {
+                          long duration = mPlaybackFragment.najmDuration();
+                          long position = mPlaybackFragment.najmPosition();
+                          if (!mNajmDragging) {
+                              mNajmSeekBar.setProgress((int) Math.min(position / 1000L, Integer.MAX_VALUE));
+                              mNajmSeekBar.setMax((int) Math.max(1, Math.min(Math.max(0,duration)/1000L, Integer.MAX_VALUE)));
+                          }
+                          mNajmTiming.setText(najmClock(position) + " / " + najmClock(duration));
+                          mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");
+                      }
+                      mNajmHandler.postDelayed(this, 800);
+                  }
+              };''',1)
+          anchor='''        setContentView(R.layout.fragment_playback);
+                  Fragment fragment ='''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''        setContentView(R.layout.fragment_playback);
+                  setupNajmPlayerControls();
+                  Fragment fragment =''',1)
+          anchor='''            mPlaybackFragment = (PlaybackFragment) fragment;
+                  }
+              }'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''            mPlaybackFragment = (PlaybackFragment) fragment;
+                  }
+                  mNajmHandler.post(mNajmRefresh);
+              }''',1)
+          anchor='''    @Override
+              public boolean dispatchTouchEvent(MotionEvent event) {
+                  if (mPlaybackFragment != null) {
+                      mPlaybackFragment.onDispatchTouchEvent(event);
+                  }
+
+                  return super.dispatchTouchEvent(event);
+              }'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''    @Override
+              public boolean dispatchTouchEvent(MotionEvent event) {
+                  // Run touch gestures before SmartTube's original screen controls.
+                  if (mNajmGesture != null && mNajmGesture.onTouchEvent(event)) {
+                      showNajmControls();
+                      return true;
+                  }
+                  if (mPlaybackFragment != null) mPlaybackFragment.onDispatchTouchEvent(event);
+                  boolean handled = super.dispatchTouchEvent(event);
+                  if (event.getActionMasked() == MotionEvent.ACTION_UP) showNajmControls();
+                  return handled;
+              }''',1)
+          anchor='''    @Override
+              public void finishReally() {'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''    private void setupNajmPlayerControls() {
+                  mNajmControls = findViewById(R.id.najm_player_controls);
+                  mNajmToggle = findViewById(R.id.najm_player_toggle);
+                  mNajmTiming = findViewById(R.id.najm_player_time);
+                  mNajmSeekBar = findViewById(R.id.najm_player_seekbar);
+                  mNajmControls.setVisibility(View.GONE);
+                  findViewById(R.id.najm_player_back10).setOnClickListener(v -> {
+                      if (mPlaybackFragment != null) mPlaybackFragment.najmSeekTen(false);
+                      showNajmControls();
+                  });
+                  findViewById(R.id.najm_player_forward10).setOnClickListener(v -> {
+                      if (mPlaybackFragment != null) mPlaybackFragment.najmSeekTen(true);
+                      showNajmControls();
+                  });
+                  mNajmToggle.setOnClickListener(v -> {
+                      if (mPlaybackFragment != null) mPlaybackFragment.najmTogglePlayback();
+                      showNajmControls();
+                  });
+                  mNajmSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                      public void onStartTrackingTouch(SeekBar seekBar) { mNajmDragging = true; mNajmHandler.removeCallbacks(mNajmDismiss); }
+                      public void onStopTrackingTouch(SeekBar seekBar) {
+                          if (mPlaybackFragment != null) mPlaybackFragment.najmSeekTo(seekBar.getProgress()*1000L);
+                          mNajmDragging = false;
+                          showNajmControls();
+                      }
+                      public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {}
+                  });
+                  mNajmGesture = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+                      @Override public boolean onDown(MotionEvent e) { return false; }
+                      @Override public boolean onDoubleTap(MotionEvent e) {
+                          if (mPlaybackFragment == null) return false;
+                          // YouTube gesture: double-tap right +10s / left -10s.
+                          float proportion = e.getX() / Math.max(1f, getResources().getDisplayMetrics().widthPixels);
+                          if (proportion >= .65f) mPlaybackFragment.najmSeekTen(true);
+                          else if (proportion <= .35f) mPlaybackFragment.najmSeekTen(false);
+                          else mPlaybackFragment.najmTogglePlayback();
+                          return true;
+                      }
+                  });
+              }
+              private void showNajmControls() {
+                  if (mNajmControls == null) return;
+                  mNajmControls.setVisibility(View.VISIBLE);
+                  mNajmHandler.removeCallbacks(mNajmDismiss);
+                  mNajmHandler.postDelayed(mNajmDismiss, 3800);
+              }
+              private static String najmClock(long timeMs) {
+                  if (timeMs < 0) return "00:00";
+                  long seconds=timeMs/1000;
+                  if (seconds >= 3600) return String.format(Locale.US,"%d:%02d:%02d",seconds/3600,(seconds/60)%60,seconds%60);
+                  return String.format(Locale.US,"%02d:%02d",seconds/60,seconds%60);
+              }
+              @Override protected void onDestroy() {
+                  mNajmHandler.removeCallbacks(mNajmRefresh);
+                  mNajmHandler.removeCallbacks(mNajmDismiss);
+                  super.onDestroy();
+              }
+
+              @Override
+              public void finishReally() {''',1)
+          act.write_text(s)
+
+          layout=root/'res/layout/fragment_playback.xml'
+          layout.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent" android:layout_height="match_parent">
+              <fragment android:id="@+id/playback_controls_fragment"
+                  android:name="com.liskovsoft.smartyoutubetv2.tv.ui.playback.PlaybackFragment"
+                  android:tag="@string/playback_tag"
+                  android:layout_width="match_parent" android:layout_height="match_parent"/>
+              <FrameLayout android:id="@+id/najm_player_controls" android:layout_width="match_parent"
+                  android:layout_height="match_parent" android:visibility="gone" android:clickable="false">
+                  <LinearLayout android:layout_width="wrap_content" android:layout_height="76dp"
+                      android:layout_gravity="center" android:orientation="horizontal" android:gravity="center"
+                      android:background="@drawable/najm_player_dock">
+                      <TextView android:id="@+id/najm_player_back10" style="@style/NajmTube.PlayerControl"
+                          android:text="↶ 10" android:contentDescription="ترجيع 10 ثوانٍ"/>
+                      <TextView android:id="@+id/najm_player_toggle" style="@style/NajmTube.PlayerControl"
+                          android:text="Ⅱ" android:contentDescription="تشغيل أو إيقاف مؤقت"/>
+                      <TextView android:id="@+id/najm_player_forward10" style="@style/NajmTube.PlayerControl"
+                          android:text="10 ↷" android:contentDescription="تقديم 10 ثوانٍ"/>
+                  </LinearLayout>
+                  <LinearLayout android:layout_gravity="bottom" android:orientation="vertical"
+                      android:background="#C9000000" android:padding="8dp"
+                      android:layout_width="match_parent" android:layout_height="wrap_content">
+                      <TextView android:id="@+id/najm_player_time" android:layout_width="match_parent"
+                          android:layout_height="wrap_content" android:textColor="#FFFFFF"
+                          android:textSize="14sp" android:text="00:00 / 00:00"/>
+                      <SeekBar android:id="@+id/najm_player_seekbar" android:layout_width="match_parent"
+                          android:layout_height="32dp" android:max="100" android:progressTint="#FF1744"
+                          android:thumbTint="#FF1744" android:contentDescription="شريط تقدم الفيديو"/>
+                  </LinearLayout>
+              </FrameLayout>
+          </FrameLayout>''')
+          (root/'res/drawable/najm_player_dock.xml').write_text('''<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="#C9111111"/><corners android:radius="23dp"/></shape>''')
+          (root/'res/values/najm_player.xml').write_text('''<resources><style name="NajmTube.PlayerControl"><item name="android:layout_width">100dp</item><item name="android:layout_height">72dp</item><item name="android:gravity">center</item><item name="android:clickable">true</item><item name="android:focusable">true</item><item name="android:background">?android:attr/selectableItemBackground</item><item name="android:textColor">#FFFFFF</item><item name="android:textSize">23sp</item><item name="android:textStyle">bold</item></style></resources>''')
+
+          strings=root/'res/values/strings.xml'
+          t=strings.read_text()
+          assert '<![CDATA[SmartTube]]>' in t
+          t=t.replace('<![CDATA[SmartTube]]>', '<![CDATA[NAJM Tube]]>', 2)
+          strings.write_text(t)
+          manifest=root/'AndroidManifest.xml'
+          t=manifest.read_text()
+          assert t.count('android:icon="@mipmap/app_icon"') == 1
+          assert t.count('android:banner="@mipmap/app_banner"') == 1
+          t=t.replace('android:icon="@mipmap/app_icon"', 'android:icon="@mipmap/najm_tube_icon"',1)
+          t=t.replace('android:logo="@mipmap/app_logo"', 'android:logo="@mipmap/najm_tube_icon"',1)
+          t=t.replace('android:banner="@mipmap/app_banner"', 'android:banner="@mipmap/najm_tube_banner"',1)
+          manifest.write_text(t)
+          home=root/'res/layout/fragment_main.xml'
+          t=home.read_text()
+          assert 'SmartTube' in t
+          home.write_text(t.replace('SmartTube','NAJM Tube'))
+          theme=root/'res/values/najm_home_theme.xml'
+          t=theme.read_text().replace('name="cardSelectedBackground">@color/najm_panel','name="cardSelectedBackground">@color/najm_panel')
+          t=t.replace('</style></resources>','<item name="appLogo">@mipmap/najm_tube_icon</item></style></resources>')
+          theme.write_text(t)
+          # Generate PNGs with only Python's standard library (Android 4.4-compatible bitmap resources).
+          def png(path,w,h,pixel):
+              raw=bytearray()
+              for y in range(h):
+                  raw.append(0)
+                  for x in range(w): raw.extend(pixel(x,y))
+              def chunk(t,b): return struct.pack('!I',len(b))+t+b+struct.pack('!I',zlib.crc32(t+b)&0xffffffff)
+              data=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!2I5B',w,h,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(bytes(raw),9))+chunk(b'IEND',b'')
+              path.write_bytes(data)
+          def rounded(x,y,x1,y1,x2,y2,r):
+              cx=min(max(x,x1+r),x2-r);cy=min(max(y,y1+r),y2-r)
+              return (x-cx)**2+(y-cy)**2<=r*r
+          def icon_px(x,y):
+              if not rounded(x,y,7,7,185,185,35):return (0,0,0,0)
+              if rounded(x,y,22,22,170,170,29):base=(21,21,25,255)
+              else:base=(6,8,13,255)
+              if rounded(x,y,29,51,164,140,27):base=(240,21,55,255)
+              if 83<=x<=122 and abs(y-95)<(x-80)*.62:base=(255,255,255,255)
+              return base
+          res=root/'res/mipmap-nodpi'
+          png(res/'najm_tube_icon.png',192,192,icon_px)
+          def banner_px(x,y):
+              if rounded(x,y,0,0,320,180,16):base=(13,15,22,255)
+              else:return (0,0,0,0)
+              if rounded(x,y,32,42,158,140,25):base=(240,21,55,255)
+              if 79<=x<=125 and abs(y-91)<(x-74)*.55:base=(255,255,255,255)
+              # Distinctive gold underline to brand the TV launcher banner.
+              if 181<x<304 and 135<y<141:base=(197,163,82,255)
+              return base
+          png(res/'najm_tube_banner.png',320,180,banner_px)
+          print('Prepared NAJM Tube video controls, 10-second double taps, timeline, new identity')
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
