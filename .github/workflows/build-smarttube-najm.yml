@@ -643,6 +643,242 @@ jobs:
           icons.write_text(s.replace(anchor,'    android:orientation="horizontal"\n    android:focusableInTouchMode="false">',1))
           print('Single-tap navigation: modified search, sidebar, video cards and touch dispatch.')
           PY
+      - name: YouTube-style player controls and red progress scrubber
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          base=Path('SmartTube/smarttubetv/src/main')
+          java=base/'java/com/liskovsoft/smartyoutubetv2/tv/ui/playback'
+          playback=java/'PlaybackFragment.java'
+          s=playback.read_text()
+          old='    public long najmDuration() { return mPlayer != null ? mPlayer.getDuration() : -1; }'
+          assert s.count(old)==1
+          s=s.replace(old,old+'''
+              public long najmBuffered() { return mPlayer != null ? mPlayer.getBufferedPosition() : 0; }
+              public String najmVideoTitle() {
+                  return getVideo() != null && getVideo().getTitle() != null
+                      ? getVideo().getTitle() : "";
+              }''',1)
+          playback.write_text(s)
+
+          # Custom timeline: persistent thin red played line, buffered indicator,
+          # draggable enlarged seek target, and a live time bubble on scrub.
+          (java/'NajmSeekTimeline.java').write_text(r'''package com.liskovsoft.smartyoutubetv2.tv.ui.playback;
+          import android.content.Context;
+          import android.graphics.Canvas;
+          import android.graphics.Paint;
+          import android.graphics.RectF;
+          import android.util.AttributeSet;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import java.util.Locale;
+
+          public class NajmSeekTimeline extends View {
+              public interface SeekListener {
+                  void onDragStart();
+                  void onDragUpdate(long ms);
+                  void onDragFinish(long ms);
+              }
+              private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final RectF rect=new RectF();
+              private final float density;
+              private long position, duration=-1, buffered;
+              private boolean dragging;
+              private SeekListener listener;
+              public NajmSeekTimeline(Context c) { this(c,null); }
+              public NajmSeekTimeline(Context c,AttributeSet a) {
+                  super(c,a);
+                  density=getResources().getDisplayMetrics().density;
+                  setClickable(true);
+                  setContentDescription("شريط تقدم الفيديو والتقديم والترجيع");
+              }
+              private float dp(float x) { return density*x; }
+              public void setSeekListener(SeekListener l) { listener=l; }
+              public void update(long pos,long len,long buf) {
+                  if(dragging)return;
+                  position=Math.max(0,pos);duration=len;buffered=Math.max(0,buf);invalidate();
+              }
+              private float frac(long ms) {
+                  return duration<=0?0f:Math.min(1f,Math.max(0f,(float)((double)ms/duration)));
+              }
+              private long seekAt(float x) {
+                  if(duration<=0)return 0;
+                  float f=Math.min(1f,Math.max(0f,(x-dp(6))/Math.max(1f,getWidth()-dp(12))));
+                  return (long)(duration*f);
+              }
+              private void stripe(Canvas c,float left,float right,float y,float h,int color) {
+                  if(right<=left)return;
+                  p.setColor(color);
+                  rect.set(left,y-h/2,right,y+h/2);
+                  c.drawRoundRect(rect,h/2,h/2,p);
+              }
+              private static String time(long ms) {
+                  long sec=Math.max(0,ms)/1000L;
+                  return sec>=3600
+                    ? String.format(Locale.US,"%d:%02d:%02d",sec/3600,sec/60%60,sec%60)
+                    : String.format(Locale.US,"%02d:%02d",sec/60,sec%60);
+              }
+              @Override protected void onDraw(Canvas c) {
+                  super.onDraw(c);
+                  float left=dp(6),right=getWidth()-dp(6);
+                  float cy=getHeight()-dp(7);
+                  float h=dragging?dp(4):dp(2.5f);
+                  stripe(c,left,right,cy,h,0x88656565);
+                  stripe(c,left,left+(right-left)*frac(buffered),cy,h,0xBBAAAAAA);
+                  float played=left+(right-left)*frac(position);
+                  stripe(c,left,played,cy,h,0xFFFF0033);
+                  if (dragging) {
+                      p.setColor(0xFFFF0033);
+                      c.drawCircle(played,cy,dp(7),p);
+                      String label=time(position);
+                      p.setTextSize(dp(14));
+                      p.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
+                      p.setTextAlign(Paint.Align.CENTER);
+                      float w=p.measureText(label)+dp(22);
+                      float bubbleX=Math.max(left+w/2,Math.min(right-w/2,played));
+                      rect.set(bubbleX-w/2,cy-dp(56),bubbleX+w/2,cy-dp(23));
+                      p.setColor(0xEC101010);
+                      c.drawRoundRect(rect,dp(10),dp(10),p);
+                      p.setColor(0xFFFFFFFF);
+                      c.drawText(label,bubbleX,cy-dp(35),p);
+                      p.setTextAlign(Paint.Align.LEFT);
+                  }
+              }
+              @Override public boolean onTouchEvent(MotionEvent e) {
+                  if(duration<=0||!isEnabled())return false;
+                  int action=e.getActionMasked();
+                  if(action==MotionEvent.ACTION_DOWN) {
+                      dragging=true;
+                      if(getParent()!=null)getParent().requestDisallowInterceptTouchEvent(true);
+                      position=seekAt(e.getX());
+                      if(listener!=null){listener.onDragStart();listener.onDragUpdate(position);}
+                      invalidate();return true;
+                  }
+                  if(action==MotionEvent.ACTION_MOVE && dragging){
+                      position=seekAt(e.getX());
+                      if(listener!=null)listener.onDragUpdate(position);
+                      invalidate();return true;
+                  }
+                  if(action==MotionEvent.ACTION_UP && dragging){
+                      position=seekAt(e.getX());
+                      dragging=false;
+                      if(listener!=null)listener.onDragFinish(position);
+                      invalidate();performClick();return true;
+                  }
+                  if(action==MotionEvent.ACTION_CANCEL){
+                      dragging=false;invalidate();return true;
+                  }
+                  return super.onTouchEvent(e);
+              }
+              @Override public boolean performClick(){super.performClick();return true;}
+          }
+          ''')
+
+          # Player layer: original video + YouTube-like controls and minimal
+          # always-visible red progress. No changes to video streaming components.
+          layout=base/'res/layout/fragment_playback.xml'
+          layout.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent" android:layout_height="match_parent">
+              <fragment android:id="@+id/playback_controls_fragment"
+                  android:name="com.liskovsoft.smartyoutubetv2.tv.ui.playback.PlaybackFragment"
+                  android:tag="@string/playback_tag"
+                  android:layout_width="match_parent" android:layout_height="match_parent"/>
+              <FrameLayout android:id="@+id/najm_player_controls"
+                  android:layout_width="match_parent" android:layout_height="match_parent"
+                  android:visibility="gone" android:clickable="false">
+                  <LinearLayout android:layout_width="match_parent" android:layout_height="64dp"
+                      android:layout_gravity="top" android:orientation="horizontal" android:gravity="center_vertical"
+                      android:paddingStart="15dp" android:paddingEnd="18dp" android:background="#88000000">
+                      <TextView android:id="@+id/najm_player_back" android:layout_width="50dp"
+                          android:layout_height="match_parent" android:gravity="center"
+                          android:text="‹" android:textColor="#FFFFFF" android:textSize="35sp"
+                          android:focusable="true" android:clickable="true" android:contentDescription="رجوع"/>
+                      <TextView android:id="@+id/najm_player_title"
+                          android:layout_width="0dp" android:layout_weight="1"
+                          android:layout_height="wrap_content" android:singleLine="true"
+                          android:ellipsize="end" android:textColor="#FFFFFF" android:textSize="17sp"/>
+                  </LinearLayout>
+                  <LinearLayout android:layout_width="wrap_content" android:layout_height="80dp"
+                      android:layout_gravity="center" android:orientation="horizontal" android:gravity="center"
+                      android:background="@drawable/najm_player_dock">
+                      <TextView android:id="@+id/najm_player_back10" style="@style/NajmTube.PlayerControl"
+                          android:text="↶ 10" android:contentDescription="ترجيع 10 ثوانٍ"/>
+                      <TextView android:id="@+id/najm_player_toggle" style="@style/NajmTube.PlayerControl"
+                          android:text="Ⅱ" android:contentDescription="تشغيل أو إيقاف مؤقت"/>
+                      <TextView android:id="@+id/najm_player_forward10" style="@style/NajmTube.PlayerControl"
+                          android:text="10 ↷" android:contentDescription="تقديم 10 ثوانٍ"/>
+                  </LinearLayout>
+                  <TextView android:id="@+id/najm_player_time" android:layout_width="wrap_content"
+                      android:layout_height="wrap_content" android:layout_gravity="bottom|start"
+                      android:layout_marginStart="16dp" android:layout_marginBottom="44dp"
+                      android:textColor="#FFFFFF" android:textSize="14sp" android:text="00:00 / 00:00"/>
+              </FrameLayout>
+              <com.liskovsoft.smartyoutubetv2.tv.ui.playback.NajmSeekTimeline
+                  android:id="@+id/najm_player_seekbar"
+                  android:layout_width="match_parent" android:layout_height="42dp"
+                  android:layout_gravity="bottom" />
+          </FrameLayout>''')
+
+          activity=java/'PlaybackActivity.java'
+          s=activity.read_text()
+          assert s.count('private SeekBar mNajmSeekBar;')==1
+          s=s.replace('private SeekBar mNajmSeekBar;','private NajmSeekTimeline mNajmSeekBar;\n    private boolean mNajmTimelineTouch;\n    private TextView mNajmTitle;',1)
+          old='''                              mNajmSeekBar.setProgress((int) Math.min(position / 1000L, Integer.MAX_VALUE));
+                              mNajmSeekBar.setMax((int) Math.max(1, Math.min(Math.max(0,duration)/1000L, Integer.MAX_VALUE)));'''
+          assert s.count(old)==1
+          s=s.replace(old,'''                              mNajmSeekBar.update(position,duration,mPlaybackFragment.najmBuffered());''',1)
+          old='''                          mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");'''
+          assert s.count(old)==1
+          s=s.replace(old,old+'''
+                          if(mNajmTitle != null)mNajmTitle.setText(mPlaybackFragment.najmVideoTitle());''',1)
+          old='''                  mNajmSeekBar = findViewById(R.id.najm_player_seekbar);'''
+          assert s.count(old)==1
+          s=s.replace(old,old+'''
+                  mNajmTitle=findViewById(R.id.najm_player_title);
+                  findViewById(R.id.najm_player_back).setOnClickListener(v -> onBackPressed());''',1)
+          start=s.index('                  mNajmSeekBar.setOnSeekBarChangeListener(')
+          end=s.index('                  mNajmGesture =',start)
+          s=s[:start]+'''                  mNajmSeekBar.setSeekListener(new NajmSeekTimeline.SeekListener() {
+                      public void onDragStart() {
+                          mNajmDragging=true;
+                          mNajmHandler.removeCallbacks(mNajmDismiss);
+                          if(mNajmControls!=null)mNajmControls.setVisibility(View.VISIBLE);
+                      }
+                      public void onDragUpdate(long positionMs) {
+                          mNajmTiming.setText(najmClock(positionMs) + " / " +
+                              najmClock(mPlaybackFragment != null ? mPlaybackFragment.najmDuration():-1));
+                      }
+                      public void onDragFinish(long positionMs) {
+                          if(mPlaybackFragment!=null)mPlaybackFragment.najmSeekTo(positionMs);
+                          mNajmDragging=false;
+                          showNajmControls();
+                      }
+                  });
+          '''+s[end:]
+          old='''                  // Run touch gestures before SmartTube's original screen controls.
+                  if (mNajmGesture != null && mNajmGesture.onTouchEvent(event)) {'''
+          assert s.count(old)==1
+          s=s.replace(old,'''                  // Leave timeline gestures intact; no conflict with double-tap seek.
+                  if(event.getActionMasked()==MotionEvent.ACTION_DOWN) {
+                      android.graphics.Rect hit=new android.graphics.Rect();
+                      mNajmTimelineTouch = mNajmSeekBar!=null && mNajmSeekBar.getGlobalVisibleRect(hit)
+                          && hit.contains((int)event.getRawX(),(int)event.getRawY());
+                  }
+                  if(mNajmTimelineTouch){
+                      boolean result=super.dispatchTouchEvent(event);
+                      if(event.getActionMasked()==MotionEvent.ACTION_UP
+                         || event.getActionMasked()==MotionEvent.ACTION_CANCEL)mNajmTimelineTouch=false;
+                      return result;
+                  }
+                  if (mNajmGesture != null && mNajmGesture.onTouchEvent(event)) {''',1)
+          # Prevent duplicate double-tap handlers from original underlying player:
+          s=s.replace('''                  if (mPlaybackFragment != null) mPlaybackFragment.onDispatchTouchEvent(event);
+                  boolean handled = super.dispatchTouchEvent(event);''',
+              '''                  boolean handled = super.dispatchTouchEvent(event);''',1)
+          activity.write_text(s)
+          print('YouTube-style playback UI, timeline and scrubbing ready')
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
