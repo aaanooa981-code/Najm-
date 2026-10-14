@@ -880,6 +880,133 @@ jobs:
           activity.write_text(s)
           print('YouTube-style playback UI, timeline and scrubbing ready')
           PY
+      - name: Replace floating playback box with clean YouTube-like bottom controls
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('SmartTube/smarttubetv/src/main')
+          playback=root/'java/com/liskovsoft/smartyoutubetv2/tv/ui/playback/PlaybackActivity.java'
+          s=playback.read_text()
+          # Preserve the working 10-second gestures, playback engine, search and app identity.
+          anchor='    private GestureDetector mNajmGesture;'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'    private boolean mNajmOriginalMenuOpen;\n'+anchor,1)
+          anchor='''        if (mNajmControls != null) mNajmControls.setVisibility(View.GONE);'''
+          assert s.count(anchor)==1
+          # Existing autoplay hide timer remains; do not replace it.
+          setup='''        mNajmControls.setVisibility(View.GONE);
+                  findViewById(R.id.najm_player_back10).setOnClickListener'''
+          assert s.count(setup)==1
+          s=s.replace(setup,'''        mNajmControls.setVisibility(View.GONE);
+                  findViewById(R.id.najm_player_options).setOnClickListener(v -> {
+                      // Advanced SmartTube options remain available behind the YouTube-style player.
+                      mNajmOriginalMenuOpen = true;
+                      mNajmHandler.removeCallbacks(mNajmDismiss);
+                      mNajmControls.setVisibility(View.GONE);
+                      if (mPlaybackFragment != null) mPlaybackFragment.showControlsOverlay(false);
+                  });
+                  findViewById(R.id.najm_player_back10).setOnClickListener''',1)
+          anchor='''        if (mNajmControls == null) return;
+                  mNajmControls.setVisibility(View.VISIBLE);'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''        if (mNajmControls == null || mNajmOriginalMenuOpen) return;
+                  if (mPlaybackFragment != null) mPlaybackFragment.hideControlsOverlay(true);
+                  mNajmControls.setVisibility(View.VISIBLE);''',1)
+          anchor='''    @Override
+              public void onBackPressed() {
+                  mIsBackPressed = true;
+                  super.onBackPressed();
+              }'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''    @Override
+              public void onBackPressed() {
+                  if (mNajmOriginalMenuOpen) {
+                      mNajmOriginalMenuOpen = false;
+                      if (mPlaybackFragment != null) mPlaybackFragment.hideControlsOverlay(true);
+                      showNajmControls();
+                      return;
+                  }
+                  mIsBackPressed = true;
+                  super.onBackPressed();
+              }''',1)
+          # Keep the old SmartTube control overlay suppressed while our clean player is showing.
+          anchor='''        if (mPlaybackFragment != null && mNajmControls != null) {
+                          long duration = mPlaybackFragment.najmDuration();'''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'''        if (mPlaybackFragment != null && mNajmControls != null) {
+                          if (mNajmControls.getVisibility() == View.VISIBLE && !mNajmOriginalMenuOpen) {
+                              mPlaybackFragment.hideControlsOverlay(true);
+                          }
+                          long duration = mPlaybackFragment.najmDuration();''',1)
+          playback.write_text(s)
+
+          # Single clean bar at the BOTTOM of the video; no floating center rectangle.
+          view=root/'res/layout/fragment_playback.xml'
+          view.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent" android:layout_height="match_parent">
+              <fragment android:id="@+id/playback_controls_fragment"
+                  android:name="com.liskovsoft.smartyoutubetv2.tv.ui.playback.PlaybackFragment"
+                  android:tag="@string/playback_tag"
+                  android:layout_width="match_parent" android:layout_height="match_parent" />
+              <FrameLayout android:id="@+id/najm_player_controls"
+                  android:layout_width="match_parent" android:layout_height="match_parent"
+                  android:visibility="gone" android:clickable="false">
+                  <LinearLayout android:id="@+id/najm_player_bottom"
+                      android:layout_gravity="bottom" android:orientation="vertical"
+                      android:paddingStart="12dp" android:paddingEnd="12dp"
+                      android:paddingTop="12dp" android:paddingBottom="8dp"
+                      android:background="@drawable/najm_player_bottom_fade"
+                      android:layout_width="match_parent" android:layout_height="wrap_content">
+                      <SeekBar android:id="@+id/najm_player_seekbar"
+                          android:layout_width="match_parent" android:layout_height="28dp"
+                          android:max="100" android:progressTint="#FF0033"
+                          android:thumbTint="#FF0033" android:progressBackgroundTint="#A0FFFFFF"
+                          android:contentDescription="تقدم الفيديو - اسحب للتقديم أو الترجيع"/>
+                      <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
+                          android:gravity="center_vertical" android:orientation="horizontal">
+                          <TextView android:id="@+id/najm_player_toggle"
+                              style="@style/NajmTube.PlayerControl"
+                              android:layout_width="52dp" android:layout_height="46dp"
+                              android:text="Ⅱ" android:textSize="25sp"
+                              android:contentDescription="تشغيل أو إيقاف"/>
+                          <TextView android:id="@+id/najm_player_back10"
+                              style="@style/NajmTube.PlayerControl"
+                              android:layout_width="58dp" android:layout_height="46dp"
+                              android:text="↶ 10" android:textSize="17sp"
+                              android:contentDescription="ترجيع 10 ثوانٍ"/>
+                          <TextView android:id="@+id/najm_player_forward10"
+                              style="@style/NajmTube.PlayerControl"
+                              android:layout_width="58dp" android:layout_height="46dp"
+                              android:text="10 ↷" android:textSize="17sp"
+                              android:contentDescription="تقديم 10 ثوانٍ"/>
+                          <TextView android:id="@+id/najm_player_time"
+                              android:layout_width="wrap_content" android:layout_height="match_parent"
+                              android:gravity="center_vertical" android:text="00:00 / 00:00"
+                              android:textColor="#FFFFFF" android:textSize="14sp"
+                              android:layout_marginStart="8dp"/>
+                          <Space android:layout_width="0dp" android:layout_height="1dp"
+                              android:layout_weight="1"/>
+                          <TextView android:id="@+id/najm_player_options"
+                              style="@style/NajmTube.PlayerControl"
+                              android:layout_width="48dp" android:layout_height="46dp"
+                              android:text="⚙" android:textSize="23sp"
+                              android:contentDescription="خيارات الفيديو المتقدمة"/>
+                      </LinearLayout>
+                  </LinearLayout>
+              </FrameLayout>
+          </FrameLayout>''')
+          (root/'res/drawable/najm_player_bottom_fade.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android">
+              <gradient android:angle="90" android:startColor="#EE000000"
+                  android:endColor="#00000000"/>
+          </shape>''')
+          # Existing 10-second double-tap gestures are untouched.
+          assert "getX()" in s and "najmSeekTen(true)" in s
+          assert "android:layout_gravity=\"bottom\"" in view.read_text()
+          assert "android:layout_gravity=\"center\"" not in view.read_text()
+          print('NAJM Tube: clean YouTube-like BOTTOM overlay, no middle controls; 10-second double-tap preserved')
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
