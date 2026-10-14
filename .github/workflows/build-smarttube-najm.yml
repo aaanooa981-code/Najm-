@@ -862,12 +862,12 @@ jobs:
           assert code.count(anchor)==1
           code=code.replace(anchor,anchor+'''
                       mPlaybackFragment.setNajmExclusivePlayerControls(true);''',1)
-          anchor='''                      mNajmOriginalMenuOpen = true;'''
+          anchor='mNajmOriginalMenuOpen = true;'
           assert code.count(anchor)==1
           code=code.replace(anchor,'''                      mNajmOriginalMenuOpen = true;
                       // Advanced features: temporarily reveal the stock SmartTube player.
                       if (mPlaybackFragment != null) mPlaybackFragment.setNajmExclusivePlayerControls(false);''',1)
-          anchor='''                      mNajmOriginalMenuOpen = false;'''
+          anchor='mNajmOriginalMenuOpen = false;'
           assert code.count(anchor)==1
           code=code.replace(anchor,'''                      mNajmOriginalMenuOpen = false;
                       if (mPlaybackFragment != null) mPlaybackFragment.setNajmExclusivePlayerControls(true);''',1)
