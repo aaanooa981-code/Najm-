@@ -508,6 +508,138 @@ jobs:
           png(res/'najm_tube_banner.png',320,180,banner_px)
           print('Prepared NAJM Tube video controls, 10-second double taps, timeline, new identity')
           PY
+      - name: One-tap touch navigation and clean video-only search results
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('SmartTube/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv')
+          # Hide the irrelevant autocomplete/tag chips, without affecting video search.
+          search=root/'ui/search/tags/vineyard/SearchTagsFragmentBase.java'
+          s=search.read_text()
+          anchor='''    protected void loadSearchTags(String searchQuery) {
+                  searchTaggedPosts(searchQuery);
+              }'''
+          assert s.count(anchor)==1, "Search suggestions layout changed unexpectedly"
+          s=s.replace(anchor,'''    protected void loadSearchTags(String searchQuery) {
+                  // NAJM: No separate suggestions rows; keep only real video search results.
+                  clearTags();
+              }''',1)
+          search.write_text(s)
+
+          # The upstream sidebar only opens on the SECOND click when it is focused.
+          sidebar=root/'ui/browse/BrowseFragment.java'
+          s=sidebar.read_text()
+          start=s.index('''                    if (getHeadersSupportFragment().getSelectedPosition() != newPosition) {''')
+          end=s.index('''                }
+                  );''',start)
+          prior=s[start:end]
+          assert 'startHeadersTransitionSafe(false)' in prior
+          s=s[:start]+'''                    // Touch: select AND navigate on the first tap.
+                              getHeadersSupportFragment().setSelectedPosition(newPosition);
+                              mBrowsePresenter.onSectionFocused((int) headerId);
+                              startHeadersTransitionSafe(false);
+          '''+s[end:]
+          sidebar.write_text(s)
+
+          # Leanback RecyclerView cards can treat the first tap as focus selection.
+          # Explicitly dispatch a single click on a short tap of a click-enabled item,
+          # without changing Android remote DPAD or player's double-tap handling.
+          activity=root/'ui/common/LeanbackActivity.java'
+          s=activity.read_text()
+          anchor='import android.view.KeyEvent;'
+          assert s.count(anchor)==1
+          s=s.replace(anchor, anchor+'''
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.view.ViewConfiguration;
+          import android.graphics.Rect;
+          import androidx.recyclerview.widget.RecyclerView;''',1)
+          anchor='    private UriBackgroundManager mBackgroundManager;'
+          assert s.count(anchor)==1
+          s=s.replace(anchor, anchor+'''
+              private View mNajmTouchTarget;
+              private float mNajmTouchDownX, mNajmTouchDownY;
+              private long mNajmTouchDownTime;
+              private boolean mNajmTouchMoved;
+              private View findNajmTouchTarget(View view, int rawX, int rawY, boolean inGrid) {
+                  if (view == null || view.getVisibility() != View.VISIBLE) return null;
+                  Rect rect = new Rect();
+                  if (!view.getGlobalVisibleRect(rect) || !rect.contains(rawX,rawY)) return null;
+                  boolean inside = inGrid || view instanceof RecyclerView;
+                  if (view instanceof ViewGroup) {
+                      ViewGroup group=(ViewGroup)view;
+                      for (int i=group.getChildCount()-1;i>=0;i--) {
+                          View hit=findNajmTouchTarget(group.getChildAt(i),rawX,rawY,inside);
+                          if (hit != null) return hit;
+                      }
+                  }
+                  return inside && (view.hasOnClickListeners() || view.isClickable()) && !(view instanceof RecyclerView)
+                      ? view : null;
+              }
+              @Override public boolean dispatchTouchEvent(MotionEvent event) {
+                  // Retain native touch gestures in video playback, especially double-tap seek.
+                  if (this instanceof PlaybackActivity) return super.dispatchTouchEvent(event);
+                  if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER
+                      || event.getPointerCount() != 1) {
+                      mNajmTouchTarget = null;
+                      return super.dispatchTouchEvent(event);
+                  }
+                  int action=event.getActionMasked();
+                  if (action==MotionEvent.ACTION_DOWN) {
+                      mNajmTouchDownX=event.getRawX();
+                      mNajmTouchDownY=event.getRawY();
+                      mNajmTouchDownTime=event.getEventTime();
+                      mNajmTouchMoved=false;
+                      mNajmTouchTarget=findNajmTouchTarget(
+                          getWindow().getDecorView(),(int)mNajmTouchDownX,(int)mNajmTouchDownY,false);
+                  } else if (action==MotionEvent.ACTION_MOVE && mNajmTouchTarget!=null) {
+                      float deltaX=event.getRawX()-mNajmTouchDownX;
+                      float deltaY=event.getRawY()-mNajmTouchDownY;
+                      int slop=ViewConfiguration.get(this).getScaledTouchSlop();
+                      if (deltaX*deltaX+deltaY*deltaY > slop*slop) mNajmTouchMoved=true;
+                  } else if (action==MotionEvent.ACTION_UP) {
+                      View target=mNajmTouchTarget;
+                      mNajmTouchTarget=null;
+                      float dx=event.getRawX()-mNajmTouchDownX;
+                      float dy=event.getRawY()-mNajmTouchDownY;
+                      int slop=ViewConfiguration.get(this).getScaledTouchSlop();
+                      boolean isTap=!mNajmTouchMoved && dx*dx+dy*dy<=slop*slop
+                          && event.getEventTime()-mNajmTouchDownTime < 450;
+                      if (isTap && target!=null
+                          && target.isShown() && target.isEnabled()
+                          && target==findNajmTouchTarget(getWindow().getDecorView(),
+                              (int)event.getRawX(),(int)event.getRawY(),false)) {
+                          // Cancel the ordinary focus-only touch sequence, then click ONCE.
+                          MotionEvent cancel=MotionEvent.obtain(event);
+                          cancel.setAction(MotionEvent.ACTION_CANCEL);
+                          super.dispatchTouchEvent(cancel);
+                          cancel.recycle();
+                          target.requestFocus();
+                          target.performClick();
+                          return true;
+                      }
+                  } else if (action==MotionEvent.ACTION_CANCEL || action==MotionEvent.ACTION_POINTER_DOWN) {
+                      mNajmTouchTarget=null;
+                  }
+                  return super.dispatchTouchEvent(event);
+              }''',1)
+          # Current LeanbackActivity already imports PlaybackActivity; reference can compile.
+          assert 'import com.liskovsoft.smartyoutubetv2.tv.ui.playback.PlaybackActivity;' in s
+          activity.write_text(s)
+          # Avoid Android view focus trap on image cards.
+          card=root/'presenter/VideoCardPresenter.java'
+          s=card.read_text()
+          assert s.count('cardView.setFocusableInTouchMode(true);')==1
+          card.write_text(s.replace('cardView.setFocusableInTouchMode(true);','cardView.setFocusableInTouchMode(false);',1))
+          # Sidebar row must be clickable without long focus acquisition.
+          icons=root/'res/layout/icon_header_item.xml'
+          s=icons.read_text()
+          anchor='    android:orientation="horizontal">'
+          assert s.count(anchor)==1
+          icons.write_text(s.replace(anchor,'    android:orientation="horizontal"\n    android:focusableInTouchMode="false">',1))
+          print('Single-tap navigation: modified search, sidebar, video cards and touch dispatch.')
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
