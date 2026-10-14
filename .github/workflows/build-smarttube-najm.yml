@@ -493,7 +493,7 @@ jobs:
               if rounded(x,y,22,22,170,170,29):base=(21,21,25,255)
               else:base=(6,8,13,255)
               if rounded(x,y,29,51,164,140,27):base=(240,21,55,255)
-              if 83<=x<=122 and abs(y-95)<(x-80)*.62:base=(255,255,255,255)
+              if 83<=x<=122 and abs(y-95)<(124-x)*.62:base=(255,255,255,255)
               return base
           res=root/'res/mipmap-nodpi'
           png(res/'najm_tube_icon.png',192,192,icon_px)
@@ -501,7 +501,7 @@ jobs:
               if rounded(x,y,0,0,320,180,16):base=(13,15,22,255)
               else:return (0,0,0,0)
               if rounded(x,y,32,42,158,140,25):base=(240,21,55,255)
-              if 79<=x<=125 and abs(y-91)<(x-74)*.55:base=(255,255,255,255)
+              if 79<=x<=125 and abs(y-91)<(127-x)*.55:base=(255,255,255,255)
               # Distinctive gold underline to brand the TV launcher banner.
               if 181<x<304 and 135<y<141:base=(197,163,82,255)
               return base
