@@ -529,16 +529,19 @@ jobs:
           # The upstream sidebar only opens on the SECOND click when it is focused.
           sidebar=root/'ui/browse/BrowseFragment.java'
           s=sidebar.read_text()
-          start=s.index('''                    if (getHeadersSupportFragment().getSelectedPosition() != newPosition) {''')
-          end=s.index('''                }
-                  );''',start)
-          prior=s[start:end]
-          assert 'startHeadersTransitionSafe(false)' in prior
-          s=s[:start]+'''                    // Touch: select AND navigate on the first tap.
+          old='''                    if (getHeadersSupportFragment().getSelectedPosition() != newPosition) {
+                                  // touch screen support
+                                  getHeadersSupportFragment().setSelectedPosition(newPosition);
+                              } else {
+                                  // update section when clicked or pressed
+                                  mBrowsePresenter.onSectionFocused((int) headerId);
+                                  startHeadersTransitionSafe(false);
+                              }'''
+          assert s.count(old)==1, 'sidebar touch code changed upstream'
+          s=s.replace(old,'''                    // Touch: navigate on the first tap.
                               getHeadersSupportFragment().setSelectedPosition(newPosition);
                               mBrowsePresenter.onSectionFocused((int) headerId);
-                              startHeadersTransitionSafe(false);
-          '''+s[end:]
+                              startHeadersTransitionSafe(false);''',1)
           sidebar.write_text(s)
 
           # Leanback RecyclerView cards can treat the first tap as focus selection.
@@ -633,7 +636,7 @@ jobs:
           assert s.count('cardView.setFocusableInTouchMode(true);')==1
           card.write_text(s.replace('cardView.setFocusableInTouchMode(true);','cardView.setFocusableInTouchMode(false);',1))
           # Sidebar row must be clickable without long focus acquisition.
-          icons=root/'res/layout/icon_header_item.xml'
+          icons=Path('SmartTube/smarttubetv/src/main/res/layout/icon_header_item.xml')
           s=icons.read_text()
           anchor='    android:orientation="horizontal">'
           assert s.count(anchor)==1
