@@ -824,10 +824,11 @@ jobs:
           s=activity.read_text()
           assert s.count('private SeekBar mNajmSeekBar;')==1
           s=s.replace('private SeekBar mNajmSeekBar;','private NajmSeekTimeline mNajmSeekBar;\n    private boolean mNajmTimelineTouch;\n    private TextView mNajmTitle;',1)
-          old='''                              mNajmSeekBar.setProgress((int) Math.min(position / 1000L, Integer.MAX_VALUE));
-                              mNajmSeekBar.setMax((int) Math.max(1, Math.min(Math.max(0,duration)/1000L, Integer.MAX_VALUE)));'''
-          assert s.count(old)==1
-          s=s.replace(old,'''                              mNajmSeekBar.update(position,duration,mPlaybackFragment.najmBuffered());''',1)
+          import re
+          s,count=re.subn(r'mNajmSeekBar\.setProgress\([^;\n]+;\s*mNajmSeekBar\.setMax\([^;\n]+;',
+              'mNajmSeekBar.update(position,duration,mPlaybackFragment.najmBuffered());',s,count=1)
+          assert count==1, 'Could not replace old slider update'
+
           old='''                          mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");'''
           assert s.count(old)==1
           s=s.replace(old,old+'''
