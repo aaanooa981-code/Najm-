@@ -883,7 +883,7 @@ jobs:
           root=Path("SmartTube/smarttubetv/src/main")
           layout=root/"res/layout/fragment_playback.xml"
           xml=layout.read_text()
-          target='''                          <TextView android:id="@+id/najm_player_toggle"'''
+          target='<TextView android:id="@+id/najm_player_toggle"'
           assert xml.count(target)==1, "Missing original play/pause button"
           xml=xml.replace(target,'''                          <!-- Previous/next items use SmartTube's own queue, not +/- 10 sec -->
                           <TextView android:id="@+id/najm_player_previous_video"
@@ -893,7 +893,7 @@ jobs:
                               android:clickable="true" android:focusable="true"
                               android:contentDescription="الفيديو السابق"/>
           '''+target,1)
-          target='''                          <TextView android:id="@+id/najm_player_back10"'''
+          target='<TextView android:id="@+id/najm_player_back10"'
           assert xml.count(target)==1, "Missing original ten-second reverse button"
           xml=xml.replace(target,'''                          <TextView android:id="@+id/najm_player_next_video"
                               style="@style/NajmTube.PlayerControl"
@@ -908,7 +908,7 @@ jobs:
 
           activity=root/"java/com/liskovsoft/smartyoutubetv2/tv/ui/playback/PlaybackActivity.java"
           code=activity.read_text()
-          target='''                  findViewById(R.id.najm_player_back10).setOnClickListener(v -> {'''
+          target='findViewById(R.id.najm_player_back10).setOnClickListener(v -> {'
           assert code.count(target)==1, "Could not locate touch-button bindings"
           code=code.replace(target,'''                  findViewById(R.id.najm_player_previous_video).setOnClickListener(v -> {
                       if (mPlaybackFragment != null) mPlaybackFragment.skipToPrevious();
