@@ -453,7 +453,7 @@ jobs:
               </FrameLayout>
           </FrameLayout>''')
           (root/'res/drawable/najm_player_dock.xml').write_text('''<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="#C9111111"/><corners android:radius="23dp"/></shape>''')
-          (root/'res/values/najm_player.xml').write_text('''<resources><style name="NajmTube.PlayerControl"><item name="android:layout_width">100dp</item><item name="android:layout_height">72dp</item><item name="android:gravity">center</item><item name="android:clickable">true</item><item name="android:focusable">true</item><item name="android:background">?android:attr/selectableItemBackground</item><item name="android:textColor">#FFFFFF</item><item name="android:textSize">23sp</item><item name="android:textStyle">bold</item></style></resources>''')
+          (root/'res/values/najm_player.xml').write_text('''<resources><style name="NajmTube.PlayerControl" parent="@android:style/Widget.TextView"><item name="android:layout_width">100dp</item><item name="android:layout_height">72dp</item><item name="android:gravity">center</item><item name="android:clickable">true</item><item name="android:focusable">true</item><item name="android:background">?android:attr/selectableItemBackground</item><item name="android:textColor">#FFFFFF</item><item name="android:textSize">23sp</item><item name="android:textStyle">bold</item></style></resources>''')
 
           strings=root/'res/values/strings.xml'
           t=strings.read_text()
