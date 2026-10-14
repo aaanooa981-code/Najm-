@@ -770,6 +770,62 @@ jobs:
           assert "android:layout_gravity=\"center\"" not in view.read_text()
           print('NAJM Tube: clean YouTube-like BOTTOM overlay, no middle controls; 10-second double-tap preserved')
           PY
+      - name: Always-visible YouTube red progress and live scrubbing time
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("SmartTube/smarttubetv/src/main")
+          layout=root/"res/layout/fragment_playback.xml"
+          s=layout.read_text()
+          assert s.count('</FrameLayout>')==2
+          assert 'najm_player_mini_progress' not in s
+          end=s.rfind('</FrameLayout>')
+          s=s[:end]+'''    <ProgressBar
+                      android:id="@+id/najm_player_mini_progress"
+                      style="?android:attr/progressBarStyleHorizontal"
+                      android:layout_width="match_parent"
+                      android:layout_height="3dp"
+                      android:layout_gravity="bottom"
+                      android:max="1000" android:progress="0"
+                      android:indeterminate="false"
+                      android:progressTint="#FF0033"
+                      android:secondaryProgressTint="#99D5D5D5"
+                      android:progressBackgroundTint="#66555555"
+                      android:contentDescription="تقدم الفيديو"/>
+          '''+s[end:]
+          layout.write_text(s)
+
+          a=root/"java/com/liskovsoft/smartyoutubetv2/tv/ui/playback/PlaybackActivity.java"
+          s=a.read_text()
+          assert s.count('private SeekBar mNajmSeekBar;')==1
+          s=s.replace('private SeekBar mNajmSeekBar;',
+              'private SeekBar mNajmSeekBar;\n    private android.widget.ProgressBar mNajmMiniProgress;',1)
+          anchor='mNajmSeekBar = findViewById(R.id.najm_player_seekbar);'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+'''
+                  mNajmMiniProgress = findViewById(R.id.najm_player_mini_progress);''',1)
+          anchor='mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+'''
+                          if (mNajmMiniProgress != null && duration > 0) {
+                              mNajmMiniProgress.setProgress((int)Math.min(1000L,position*1000L/duration));
+                          } else if (mNajmMiniProgress != null) {
+                              mNajmMiniProgress.setProgress(0);
+                          }''',1)
+          old='''public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {}'''
+          assert s.count(old)==1
+          s=s.replace(old,'''public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                          if (fromUser) {
+                              long ms=progress*1000L;
+                              mNajmTiming.setText(najmClock(ms) + " / " +
+                                  najmClock(mPlaybackFragment != null ? mPlaybackFragment.najmDuration() : -1));
+                              if(mNajmMiniProgress != null && mPlaybackFragment != null && mPlaybackFragment.najmDuration()>0)
+                                  mNajmMiniProgress.setProgress((int)Math.min(1000L,ms*1000L/mPlaybackFragment.najmDuration()));
+                          }
+                      }''',1)
+          a.write_text(s)
+          print("Always-visible YouTube-style red progress + live scrub time.")
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
