@@ -876,6 +876,57 @@ jobs:
           activity.write_text(code)
           print("NAJM single-player mode: prevents stacked original + custom bars")
           PY
+      - name: Add previous and next VIDEO buttons beside play-pause
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("SmartTube/smarttubetv/src/main")
+          layout=root/"res/layout/fragment_playback.xml"
+          xml=layout.read_text()
+          target='''                          <TextView android:id="@+id/najm_player_toggle"'''
+          assert xml.count(target)==1, "Missing original play/pause button"
+          xml=xml.replace(target,'''                          <!-- Previous/next items use SmartTube's own queue, not +/- 10 sec -->
+                          <TextView android:id="@+id/najm_player_previous_video"
+                              style="@style/NajmTube.PlayerControl"
+                              android:layout_width="48dp" android:layout_height="46dp"
+                              android:text="⏮" android:textSize="25sp"
+                              android:clickable="true" android:focusable="true"
+                              android:contentDescription="الفيديو السابق"/>
+          '''+target,1)
+          target='''                          <TextView android:id="@+id/najm_player_back10"'''
+          assert xml.count(target)==1, "Missing original ten-second reverse button"
+          xml=xml.replace(target,'''                          <TextView android:id="@+id/najm_player_next_video"
+                              style="@style/NajmTube.PlayerControl"
+                              android:layout_width="48dp" android:layout_height="46dp"
+                              android:text="⏭" android:textSize="25sp"
+                              android:clickable="true" android:focusable="true"
+                              android:contentDescription="الفيديو التالي"/>
+          '''+target,1)
+          assert xml.count('najm_player_previous_video')==1
+          assert xml.count('najm_player_next_video')==1
+          layout.write_text(xml)
+
+          activity=root/"java/com/liskovsoft/smartyoutubetv2/tv/ui/playback/PlaybackActivity.java"
+          code=activity.read_text()
+          target='''                  findViewById(R.id.najm_player_back10).setOnClickListener(v -> {'''
+          assert code.count(target)==1, "Could not locate touch-button bindings"
+          code=code.replace(target,'''                  findViewById(R.id.najm_player_previous_video).setOnClickListener(v -> {
+                      if (mPlaybackFragment != null) mPlaybackFragment.skipToPrevious();
+                      showNajmControls();
+                  });
+                  findViewById(R.id.najm_player_next_video).setOnClickListener(v -> {
+                      if (mPlaybackFragment != null) mPlaybackFragment.skipToNext();
+                      showNajmControls();
+                  });
+          '''+target,1)
+          activity.write_text(code)
+
+          fragment=root/"java/com/liskovsoft/smartyoutubetv2/tv/ui/playback/PlaybackFragment.java"
+          original=fragment.read_text()
+          assert 'public void skipToNext()' in original and 'public void skipToPrevious()' in original, "SmartTube video queue is unavailable"
+          assert 'mPlayerGlue.next()' in original and 'mPlayerGlue.previous()' in original, "Underlying SmartTube queue actions have changed"
+          print("Video previous and next: connected by one tap to the original SmartTube play queue")
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
