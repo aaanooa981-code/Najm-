@@ -826,6 +826,56 @@ jobs:
           a.write_text(s)
           print("Always-visible YouTube-style red progress + live scrub time.")
           PY
+      - name: Eliminate duplicate SmartTube overlay while using NAJM player UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path("SmartTube/smarttubetv/src/main/java/com/liskovsoft/smartyoutubetv2/tv/ui/playback")
+          fragment=src/"PlaybackFragment.java"
+          code=fragment.read_text()
+          anchor='    private Boolean mIsControlsShownPreviously;'
+          assert code.count(anchor)==1
+          code=code.replace(anchor,anchor+'''
+              private boolean mNajmExclusivePlayerControls;
+              public void setNajmExclusivePlayerControls(boolean enabled) {
+                  mNajmExclusivePlayerControls = enabled;
+                  if (enabled) {
+                      // Keep built-in SmartTube transport hidden while the NAJM bar is active.
+                      hideControlsOverlay(false);
+                  }
+              }''',1)
+          anchor='''    @Override
+              public void showControlsOverlay(boolean runAnimation) {
+                  super.showControlsOverlay(mIsUIAnimationsEnabled);'''
+          assert code.count(anchor)==1
+          code=code.replace(anchor,'''    @Override
+              public void showControlsOverlay(boolean runAnimation) {
+                  if (mNajmExclusivePlayerControls) {
+                      // Never display the second row of controls behind NAJM controls.
+                      return;
+                  }
+                  super.showControlsOverlay(mIsUIAnimationsEnabled);''',1)
+          fragment.write_text(code)
+          activity=src/"PlaybackActivity.java"
+          code=activity.read_text()
+          anchor='''            mPlaybackFragment = (PlaybackFragment) fragment;'''
+          assert code.count(anchor)==1
+          code=code.replace(anchor,anchor+'''
+                      mPlaybackFragment.setNajmExclusivePlayerControls(true);''',1)
+          anchor='''                      mNajmOriginalMenuOpen = true;'''
+          assert code.count(anchor)==1
+          code=code.replace(anchor,'''                      mNajmOriginalMenuOpen = true;
+                      // Advanced features: temporarily reveal the stock SmartTube player.
+                      if (mPlaybackFragment != null) mPlaybackFragment.setNajmExclusivePlayerControls(false);''',1)
+          anchor='''                      mNajmOriginalMenuOpen = false;'''
+          assert code.count(anchor)==1
+          code=code.replace(anchor,'''                      mNajmOriginalMenuOpen = false;
+                      if (mPlaybackFragment != null) mPlaybackFragment.setNajmExclusivePlayerControls(true);''',1)
+          # Don't let double-tap gestures in the video ever resurrect the old controls.
+          # Options remain reachable via the ⚙ button.
+          activity.write_text(code)
+          print("NAJM single-player mode: prevents stacked original + custom bars")
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
