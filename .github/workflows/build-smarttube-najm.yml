@@ -1,8 +1,8 @@
-name: NAJM Tube V2.5 Player Fix Arabic
+name: NAJM Tube V2.6 Fast Browse
 on:
   push:
     branches:
-      - najm-tube-v2-5-player-fix
+      - najm-tube-v2-6-speed
   workflow_dispatch:
 jobs:
   apk:
@@ -961,6 +961,11 @@ jobs:
           python3 ci/najm_v25_player_fix.py
           python3 ci/test_najm_v25.py
           python3 -m py_compile ci/najm_v25_player_fix.py ci/test_najm_v25.py
+      - name: Speed pass and thumbnails-cache regression checks
+        run: |
+          python3 ci/najm_v26_speed.py
+          python3 ci/test_najm_v26.py
+          python3 -m py_compile ci/najm_v26_speed.py ci/test_najm_v26.py
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
@@ -972,6 +977,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-V2.5-Player-Fix
+          name: NAJM-Tube-V2.6-Fast-Browse
           path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
           if-no-files-found: warn
