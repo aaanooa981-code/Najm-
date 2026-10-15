@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
         DefaultTrackSelector selector = new DefaultTrackSelector(this);
         selector.setParameters(selector.buildUponParameters()
             .setMaxVideoSize(854,480)
-            .setExceedVideoConstraintsIfNecessary(false));
+            .setExceedVideoConstraintsIfNecessary(true));
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
             .setBufferDurationsMs(2500,20000,1000,1500).build();
         player = new ExoPlayer.Builder(this).setTrackSelector(selector)
@@ -90,7 +90,13 @@ public final class MainActivity extends Activity {
         header.addView(urlInput, new LinearLayout.LayoutParams(0, dp(43), 1f));
         Button open = button("تشغيل");
         open.setOnClickListener(v -> openStream());
-        header.addView(open, new LinearLayout.LayoutParams(dp(84), dp(43)));
+        header.addView(open, new LinearLayout.LayoutParams(dp(78), dp(43)));
+        Button demo = button("تجربة");
+        demo.setOnClickListener(v -> {
+            urlInput.setText("https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4");
+            openStream();
+        });
+        header.addView(demo, new LinearLayout.LayoutParams(dp(72), dp(43)));
         root.addView(header);
 
         FrameLayout videoFrame = new FrameLayout(this);
@@ -144,7 +150,7 @@ public final class MainActivity extends Activity {
         status.setPadding(dp(10),dp(5),dp(10),dp(5));
         status.setTextColor(0xFFC7C7C7);
         status.setTextSize(12f);
-        status.setText("نجم تيوب لايت | تشغيل روابط الفيديو المباشرة | جودة 480p");
+        status.setText("نجم تيوب لايت | اضغط تجربة لاختبار المحرك | يفضّل 480p");
         root.addView(status);
         setContentView(root);
 
@@ -152,11 +158,18 @@ public final class MainActivity extends Activity {
             @Override public void onIsPlayingChanged(boolean playing) { showPlayState(); if (playing) scheduleHide(); }
             @Override public void onPlaybackStateChanged(int state) {
                 if(state==Player.STATE_BUFFERING) status.setText("جاري تحميل الفيديو...");
-                else if(state==Player.STATE_READY) status.setText("جاهز للتشغيل • الحد الأعلى 480p");
+                else if(state==Player.STATE_READY) status.setText("الفيديو جاهز • 480p عند توفر جودة مناسبة");
                 else if(state==Player.STATE_ENDED) { status.setText("انتهى الفيديو"); controls.setVisibility(View.VISIBLE); }
             }
             @Override public void onPlayerError(PlaybackException error) {
-                status.setText("تعذر التشغيل: " + error.getErrorCodeName());
+                String reason = error.getErrorCodeName();
+                Throwable cause = error;
+                while (cause.getCause() != null) cause = cause.getCause();
+                if (cause instanceof com.google.android.exoplayer2.upstream.HttpDataSource.InvalidResponseCodeException) {
+                    int code = ((com.google.android.exoplayer2.upstream.HttpDataSource.InvalidResponseCodeException) cause).responseCode;
+                    reason = "HTTP " + code + " — الخادم رفض الرابط. اضغط تجربة";
+                }
+                status.setText("فشل التشغيل: " + reason);
                 controls.setVisibility(View.VISIBLE);
             }
         });
@@ -183,7 +196,7 @@ public final class MainActivity extends Activity {
             player.prepare();
             player.play();
             controls.setVisibility(View.VISIBLE);
-            status.setText("جاري بدء التشغيل...");
+            status.setText("جاري بدء التشغيل... انتظر ثوانٍ");
             urlInput.clearFocus();
             InputMethodManager imm=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
             if(imm!=null) imm.hideSoftInputFromWindow(urlInput.getWindowToken(),0);
