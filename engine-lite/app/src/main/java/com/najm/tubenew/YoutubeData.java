@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nonnull;
 
 /** Network search + extraction are isolated from the UI/player. No SmartTube UI code is reused. */
 public final class YoutubeData {
@@ -37,7 +36,7 @@ public final class YoutubeData {
         if (initialized) return;
         NewPipe.init(new Downloader() {
             @Override
-            public Response execute(@Nonnull Request request) throws IOException {
+            public Response execute(Request request) throws IOException {
                 okhttp3.Request.Builder builder = new okhttp3.Request.Builder().url(request.url());
                 builder.header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
                 final Map<String,List<String>> headers = request.headers();
