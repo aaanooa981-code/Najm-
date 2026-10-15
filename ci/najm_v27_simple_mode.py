@@ -24,7 +24,7 @@ browse.write_text(s)
 layout=main/"res/layout/fragment_playback.xml"
 xml=layout.read_text()
 import re
-pattern=r'(<TextView\s+android:id="@\+id/najm_player_options"\b[\s\S]*?)(/>)'
+pattern=r'(<TextView\s+android:id="@\+id/najm_player_options"\s[\s\S]*?)(/>)'
 m=re.search(pattern,xml)
 assert m and xml.count('android:id="@+id/najm_player_options"')==1, "Options widget not found"
 widget=m.group(0)
