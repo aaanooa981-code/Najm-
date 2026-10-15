@@ -77,7 +77,7 @@ public final class HomeActivity extends Activity {
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setBackgroundColor(0xFF191919);
         ImageView icon=new ImageView(this);
-        icon.setImageResource(com.najm.tubenew.R.drawable.najm_icon);
+        icon.setImageResource(com.najm.tubenew.R.drawable.najm_user_icon);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         top.addView(icon,new LinearLayout.LayoutParams(dp(50),dp(50)));
         TextView title=new TextView(this);
