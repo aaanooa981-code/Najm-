@@ -64,6 +64,8 @@ class V2Audit(unittest.TestCase):
     def test_one_tap_and_keyboard_search(self):
         self.assertIn("setFocusableInTouchMode(false)",read(JAVA/"presenter/VideoCardPresenter.java"))
         self.assertIn("target.performClick()",self.touch)
+        self.assertIn("private final Rect mNajmHitRect = new Rect();",self.touch)
+        self.assertIn("Rect rect = mNajmHitRect;",self.touch)
         self.assertIn("EditorInfo.IME_ACTION_GO",self.search_base)
         self.assertIn("IME_ACTION_SEARCH",self.search_base)
         self.assertIn("mNajmFocusSubmittedResults",self.search_fragment)
