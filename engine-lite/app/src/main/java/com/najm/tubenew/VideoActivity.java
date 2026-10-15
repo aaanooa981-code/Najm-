@@ -272,7 +272,7 @@ public final class VideoActivity extends Activity {
             if(!stream.isUrl())continue;
             int rate=stream.getAverageBitrate();
             int score=rate<=160?rate:160-(rate-160);
-            if(stream.getMediaFormat()!=null && stream.getMediaFormat().toString().contains("M4A"))score+=1000;
+            if(stream.getFormat()!=null && stream.getFormat().toString().contains("M4A"))score+=1000;
             if(score>best){best=score;candidate=stream;}
         }
         return candidate;
