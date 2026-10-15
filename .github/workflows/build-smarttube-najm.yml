@@ -947,6 +947,10 @@ jobs:
           python3 ci/najm_v23_android_ui.py
           python3 ci/test_najm_v23.py
           python3 -m py_compile ci/najm_v23_android_ui.py ci/test_najm_v23.py
+      - name: Install approved gold-and-red NAJM Tube Android icon before signing
+        run: |
+          python3 ci/najm_v23_brand.py
+          python3 -m py_compile ci/najm_v23_brand.py
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
