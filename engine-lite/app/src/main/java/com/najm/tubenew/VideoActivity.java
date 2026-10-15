@@ -229,6 +229,10 @@ public final class VideoActivity extends Activity {
         ui.post(progress);
     }
     private void resolveStream(String address){
+        if(address==null||address.isEmpty())return;
+        int request=loadRequest.incrementAndGet();
+        retryButton.setVisibility(View.GONE);
+        webFallback.setVisibility(View.GONE);
         status.setText("جاري تجهيز فيديو يوتيوب...");
         YoutubeData.IO.execute(()->{
             try{
@@ -238,15 +242,27 @@ public final class VideoActivity extends Activity {
                 AudioStream audio=chooseAudio(info.getAudioStreams());
                 final String manifest=info.getHlsUrl();
                 final String hls=manifest==null?"":manifest;
+                final String dash=info.getDashMpdUrl()==null?"":info.getDashMpdUrl();
                 // Prefer complete MP4+audio stream. Use separate video/audio only if necessary.
                 String videoUrl=muxed!=null&&muxed.isUrl()?muxed.getContent():null;
                 String onlyVideo=separated!=null&&separated.isUrl()?separated.getContent():null;
                 String audioUrl=audio!=null&&audio.isUrl()?audio.getContent():null;
-                if(videoUrl==null && onlyVideo==null && hls.isEmpty())throw new Exception("لا توجد جودة قابلة للتشغيل لهذا الفيديو");
+                if(videoUrl==null && (onlyVideo==null||audioUrl==null) && hls.isEmpty() && dash.isEmpty()){
+                    if(!info.getErrors().isEmpty()){
+                        Throwable problem=info.getErrors().get(0);
+                        throw new Exception("تعذر استخراج مسار الفيديو: "+problem.getClass().getSimpleName());
+                    }
+                    throw new Exception("المقطع لا يوفر تدفقًا متوافقًا");
+                }
                 ui.post(()->{
-                    if(destroyed||player==null)return;
+                    if(destroyed||player==null||loadRequest.get()!=request)return;
                     try{
-                        DefaultDataSource.Factory factory=new DefaultDataSource.Factory(this);
+                        DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory()
+                            .setUserAgent("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                            .setConnectTimeoutMs(11000)
+                            .setReadTimeoutMs(15000)
+                            .setAllowCrossProtocolRedirects(true);
+                        DefaultDataSource.Factory factory=new DefaultDataSource.Factory(this,http);
                         MediaSource source;
                         if(videoUrl!=null) {
                             source=new ProgressiveMediaSource.Factory(factory)
@@ -257,25 +273,44 @@ public final class VideoActivity extends Activity {
                             MediaSource a=new ProgressiveMediaSource.Factory(factory)
                                 .createMediaSource(MediaItem.fromUri(Uri.parse(audioUrl)));
                             source=new MergingMediaSource(true,v,a);
-                        }else{
+                        }else if(!hls.isEmpty()){
                             source=new HlsMediaSource.Factory(factory)
                                 .createMediaSource(MediaItem.fromUri(Uri.parse(hls)));
+                        }else{
+                            source=new DashMediaSource.Factory(factory)
+                                .createMediaSource(MediaItem.fromUri(Uri.parse(dash)));
                         }
                         readyAt=android.os.SystemClock.elapsedRealtime();
                         player.setMediaSource(source);player.prepare();player.play();
                         status.setText("جاري بدء الفيديو...");
                         scheduleHide();
-                    }catch(Exception e){status.setText("تعذر تجهيز الفيديو: "+e.getMessage());}
+                    }catch(Exception e){showError("تعذر تجهيز الفيديو: "+shortError(e));}
                 });
             }catch(Exception e){
                 String message=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
                 ui.post(()->{
-                    if(destroyed)return;
-                    status.setText("تعذر تجهيز هذا الفيديو: "+message);
-                    center.setVisibility(View.VISIBLE);
+                    if(destroyed||loadRequest.get()!=request)return;
+                    showError("تعذر تجهيز هذا الفيديو: "+message);
                 });
             }
         });
+    }
+    private void showError(String explanation) {
+        if(status!=null)status.setText(explanation);
+        if(center!=null)center.setVisibility(View.VISIBLE);
+        if(retryButton!=null)retryButton.setVisibility(View.VISIBLE);
+        if(webFallback!=null)webFallback.setVisibility(View.VISIBLE);
+    }
+    private String shortError(Exception e){
+        String m=e.getMessage();
+        if(m==null||m.trim().isEmpty())return e.getClass().getSimpleName();
+        return m.length()>150?m.substring(0,150):m;
+    }
+    private void openWebFallback(){
+        if(videoUrl==null)return;
+        Intent i=new Intent(this,WebPlayerActivity.class);
+        i.putExtra("url",videoUrl);
+        startActivity(i);
     }
     private VideoStream choose(List<VideoStream> list){
         if(list==null)return null;
@@ -332,7 +367,7 @@ public final class VideoActivity extends Activity {
     }
     @Override protected void onStop(){if(player!=null)player.pause();super.onStop();}
     @Override protected void onDestroy(){
-        destroyed=true;ui.removeCallbacksAndMessages(null);
+        destroyed=true;loadRequest.incrementAndGet();ui.removeCallbacksAndMessages(null);
         if(player!=null){player.release();player=null;}
         super.onDestroy();
     }
