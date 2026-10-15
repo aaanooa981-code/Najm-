@@ -1,8 +1,8 @@
-name: NAJM Tube V2.7 Simple 480p
+name: NAJM Tube V3 Search and Play (480p)
 on:
   push:
     branches:
-      - najm-tube-v2-7-locked-480p
+      - najm-tube-v3-search-play
   workflow_dispatch:
 jobs:
   apk:
@@ -972,6 +972,30 @@ jobs:
           python3 ci/najm_v27_simple_mode.py
           python3 ci/test_najm_v27.py
           python3 -m py_compile ci/najm_v27_quality.py ci/najm_v27_simple_mode.py ci/test_najm_v27.py
+      - name: V3 search and playback entry + lightweight ARM packaging checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("SmartTube")
+          home = (root/"smarttubetv/src/main/res/layout/fragment_main.xml").read_text()
+          player = (root/"smarttubetv/src/main/res/layout/fragment_playback.xml").read_text()
+          quality = (root/"common/src/main/java/com/liskovsoft/smartyoutubetv2/common/prefs/PlayerData.java").read_text()
+          assert "najm_search" in home and "najm_account" in home
+          assert "najm_player_toggle" in player
+          assert "NAJM_LOCKED_480" in quality
+          gradle=root/"smarttubetv/build.gradle"
+          content=gradle.read_text()
+          assert content.count('applicationId "org.smarttube.najmv27"')==1
+          content=content.replace('applicationId "org.smarttube.najmv27"', 'applicationId "org.smarttube.najmsearchv3"')
+          old="include 'armeabi-v7a', 'arm64-v8a', 'x86'"
+          assert content.count(old)==1
+          content=content.replace(old,"include 'armeabi-v7a', 'arm64-v8a'")
+          # Preserve both ARM architectures and the universal APK for easy installation.
+          assert "universalApk true" in content
+          content=content.replace('def project = "SmartTube"','def project = "NAJM_Tube"')
+          gradle.write_text(content)
+          print("V3: searchable YouTube catalogue, integrated SmartTube streaming backend, fixed 480p and ARM APKs.")
+          PY
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
@@ -983,6 +1007,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-V2.7-Simple-480p
+          name: NAJM-Tube-V3-Search-Play-480p
           path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
           if-no-files-found: warn
