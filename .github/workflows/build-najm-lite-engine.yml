@@ -1,0 +1,54 @@
+name: NAJM Tube Lite Engine APK
+on:
+  push:
+    branches:
+      - build-najm-lite-engine
+    paths:
+      - 'engine-lite/**'
+      - '.github/workflows/build-najm-lite-engine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Android SDK diagnostics
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          ls "$ANDROID_HOME/build-tools" || true
+      - name: Build independent APK
+        run: gradle --project-dir engine-lite :app:assembleDebug --no-daemon --stacktrace
+      - name: Validate APK format
+        run: |
+          test -s engine-lite/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t engine-lite/app/build/outputs/apk/debug/app-debug.apk | tail -2
+          sha256sum engine-lite/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NAJM-Tube-Lite-Engine-V1-APK
+          path: engine-lite/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish APK on isolated branch for direct download
+        continue-on-error: true
+        run: |
+          mkdir -p downloads
+          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Lite-Engine-V1.apk
+          git config user.name "NAJM APK Builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add downloads/NAJM-Tube-Lite-Engine-V1.apk
+          git commit -m "Attach standalone NAJM Tube Lite Engine APK" || true
+          git push origin HEAD:build-najm-lite-engine
