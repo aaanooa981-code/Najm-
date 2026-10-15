@@ -38,16 +38,21 @@ public final class YoutubeData {
             @Override
             public Response execute(Request request) throws IOException {
                 okhttp3.Request.Builder builder = new okhttp3.Request.Builder().url(request.url());
-                builder.header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
+                // Respect the exact extractor headers; never send a duplicate mobile UA.
                 final Map<String,List<String>> headers = request.headers();
+                boolean hasUserAgent=false;
                 if (headers != null) {
                     for (Map.Entry<String,List<String>> entry : headers.entrySet()) {
+                        if ("User-Agent".equalsIgnoreCase(entry.getKey()))hasUserAgent=true;
                         if (entry.getValue()!=null)
                             for (String value : entry.getValue()) {
                                 if (value != null) builder.addHeader(entry.getKey(), value);
                             }
                     }
                 }
+                if(!hasUserAgent)builder.header("User-Agent",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
                 String method=request.httpMethod();
                 byte[] data=request.dataToSend();
                 if ("HEAD".equalsIgnoreCase(method)) {
@@ -70,13 +75,35 @@ public final class YoutubeData {
 
     public static List<StreamInfoItem> search(String query) throws Exception {
         initialize();
-        SearchInfo results=SearchInfo.getInfo(ServiceList.YouTube.getSearchExtractor(query));
         List<StreamInfoItem> videos=new ArrayList<>();
-        for (InfoItem item : results.getRelatedItems()) {
-            if (item instanceof StreamInfoItem) videos.add((StreamInfoItem)item);
-            if (videos.size() >= 36) break;
+        Exception extractorError=null;
+        try {
+            SearchInfo results=SearchInfo.getInfo(ServiceList.YouTube.getSearchExtractor(query));
+            if(results.getRelatedItems()!=null){
+                for (InfoItem item : results.getRelatedItems()) {
+                    if (item instanceof StreamInfoItem) videos.add((StreamInfoItem)item);
+                    if (videos.size() >= 32) break;
+                }
+            }
+        } catch (Exception failure) {
+            extractorError=failure;
+            android.util.Log.w("NAJMTube","Extractor search failed; trying desktop fallback",failure);
         }
-        return videos;
+        if (!videos.isEmpty()) return videos;
+        // Some YouTube replies are valid but have changed parsing structures,
+        // so an empty extractor result is not necessarily an empty YouTube search.
+        try {
+            List<StreamInfoItem> fallback=YoutubeSearchFallback.search(query);
+            if(!fallback.isEmpty())return fallback;
+            if(extractorError!=null)
+                throw new IOException("تعذر البحث: "+extractorError.getClass().getSimpleName(),extractorError);
+            return fallback;
+        } catch(Exception fallbackError){
+            if(extractorError!=null){
+                throw new IOException("تعذر جلب نتائج يوتيوب: "+fallbackError.getMessage(),fallbackError);
+            }
+            throw fallbackError;
+        }
     }
     public static StreamInfo video(String url) throws Exception {
         initialize();
