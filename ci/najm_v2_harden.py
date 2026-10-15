@@ -23,8 +23,8 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 s = player.read_text()
 # Stop periodic player UI refresh when paused/background; resume after onResume.
 s = replace_once(
-    s, "                  mNajmHandler.post(mNajmRefresh);\n",
-    "                  // V2: refresh starts in onResume, not while activity is paused.\n",
+    s, "mNajmHandler.post(mNajmRefresh);",
+    "// V2: refresh starts in onResume, not while activity is paused.",
     "stop starting refresh in onCreate",
 )
 s = replace_once(
