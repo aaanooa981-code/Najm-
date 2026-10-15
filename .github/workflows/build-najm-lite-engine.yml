@@ -1,8 +1,8 @@
-name: NAJM Tube Standalone Search Play V1
+name: NAJM Tube Independent V1.1 Search Repair
 on:
   push:
     branches:
-      - najm-tube-standalone-v1
+      - najm-tube-standalone-v11-search-fix
     paths:
       - 'engine-lite/**'
       - '.github/workflows/build-najm-lite-engine.yml'
@@ -50,7 +50,7 @@ jobs:
           sha256sum engine-lite/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-Independent-V1-Search-Play-APK
+          name: NAJM-Tube-Independent-V1.1-Search-Fix-APK
           path: engine-lite/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 90
@@ -58,9 +58,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p downloads
-          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Independent-V1-Search-Play.apk
+          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Independent-V1.1-Search-Fix.apk
           git config user.name "NAJM APK Builder"
           git config user.email "actions@users.noreply.github.com"
-          git add downloads/NAJM-Tube-Independent-V1-Search-Play.apk engine-lite/app/src/main/res/drawable-nodpi/najm_user_icon.png
+          git add downloads/NAJM-Tube-Independent-V1.1-Search-Fix.apk engine-lite/app/src/main/res/drawable-nodpi/najm_user_icon.png
           git commit -m "[skip ci] Publish NAJM Tube Independent V1 APK and official icon" || true
-          git push origin HEAD:najm-tube-standalone-v1
+          git push origin HEAD:najm-tube-standalone-v11-search-fix
