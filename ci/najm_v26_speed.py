@@ -74,4 +74,13 @@ new='''                          } else if (which == 3) {
 s=once(s,old,new,"moving video previews toggle")
 act.write_text(s)
 
+# A fresh test package avoids replacing the user's previous signed V2.5 APK
+# with an incompatible CI debug signing key or deleting their saved settings.
+gradle=ROOT/"smarttubetv/build.gradle"
+g=gradle.read_text()
+g=once(g,'applicationId "org.smarttube.najmv4"',
+    'applicationId "org.smarttube.najmv26"',
+    "independent install for safe V2.6 test")
+gradle.write_text(g)
+
 print("V2.6: Glide still-image memory cache on Android 5.1+, previews opt-in with UI toggle.")
