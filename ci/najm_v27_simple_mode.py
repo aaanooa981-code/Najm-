@@ -29,7 +29,7 @@ m=re.search(pattern,xml)
 assert m and xml.count('android:id="@+id/najm_player_options"')==1, "Options widget not found"
 widget=m.group(0)
 assert 'android:visibility=' not in widget, "Settings widget already hidden"
-xml=xml[:m.start()]+widget.replace('/>','android:visibility="gone" />',1)+xml[m.end():]
+xml=xml[:m.start()]+widget.replace('/>',' android:visibility="gone" />',1)+xml[m.end():]
 ET.fromstring(xml)
 layout.write_text(xml)
 
