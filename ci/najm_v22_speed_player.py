@@ -13,10 +13,11 @@ def one(s,old,new,label):
     return s.replace(old,new,1)
 
 s=layout.read_text()
-begin=s.index('                  <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"')
-end=s.index('                  </LinearLayout>\n              </FrameLayout>',begin)
-# end points at the outer closing LinearLayout; the internal control row is removed.
-oldrow=s[begin:end]
+import re
+match=re.search(r'<LinearLayout android:layout_width="match_parent" android:layout_height="48dp"[^>]*>.*?</LinearLayout>',s,re.S)
+assert match is not None, "Could not locate legacy bottom transport row"
+begin,end=match.span()
+oldrow=match.group(0)
 for n in ("najm_player_toggle","najm_player_back10","najm_player_forward10",
           "najm_player_previous_video","najm_player_next_video","najm_player_time","najm_player_options"):
     assert oldrow.count(n)==1,n
