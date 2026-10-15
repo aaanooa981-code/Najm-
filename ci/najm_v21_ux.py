@@ -41,10 +41,8 @@ s=replace_once(
 )
 s=replace_once(
     s,
-    """                          refreshNajmChips();
-                      });""",
-    """                          updateNajmChipSelection();
-                      });""",
+    "refreshNajmChips();",
+    "updateNajmChipSelection();",
     "select chip without allocating new views",
 )
 browse.write_text(s)
