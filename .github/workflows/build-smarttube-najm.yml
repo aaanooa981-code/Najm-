@@ -1,8 +1,8 @@
-name: NAJM Tube V2.3 Android App UI
+name: NAJM Tube V2.4 Fast Start Arabic
 on:
   push:
     branches:
-      - najm-tube-v2-3-official-ui
+      - najm-tube-v2-4-fast-start
   workflow_dispatch:
 jobs:
   apk:
@@ -951,6 +951,11 @@ jobs:
         run: |
           python3 ci/najm_v23_brand.py
           python3 -m py_compile ci/najm_v23_brand.py
+      - name: V2.4 actual app name Arabic and fast-start tuning
+        run: |
+          python3 ci/najm_v24_name_faststart.py
+          python3 ci/test_najm_v24.py
+          python3 -m py_compile ci/najm_v24_name_faststart.py ci/test_najm_v24.py
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
@@ -962,6 +967,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-V2.3-YouTube-UI
+          name: NAJM-Tube-V2.4-Fast-Start
           path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
           if-no-files-found: warn
