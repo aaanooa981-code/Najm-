@@ -24,8 +24,6 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import org.schabi.newpipe.extractor.Image;
-import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 
 import java.net.URL;
 import java.io.InputStream;
@@ -166,11 +164,11 @@ public final class HomeActivity extends Activity {
         cards.removeAllViews();
         YoutubeData.IO.execute(()->{
             try{
-                List<StreamInfoItem> items=YoutubeData.search(q);
+                List<YoutubeData.VideoResult> items=YoutubeData.search(q);
                 ui.post(()->{
                     if(destroyed||queryVersion.get()!=requestId)return;
                     loading.setVisibility(View.GONE);
-                    status.setText(items.isEmpty()?"لا توجد نتائج. جرّب كلمة أخرى":"الفيديوهات — "+items.size()+" نتيجة");
+                    status.setText(items.isEmpty()?"لم تصل فيديوهات عن: "+q+". اضغط إعادة المحاولة":"نتائج «"+q+"» — "+items.size()+" فيديو");
                     displayResults(items);
                 });
             }catch(Exception e){
@@ -178,9 +176,9 @@ public final class HomeActivity extends Activity {
                 ui.post(()->{
                     if(destroyed||queryVersion.get()!=requestId)return;
                     loading.setVisibility(View.GONE);
-                    status.setText("تعذر جلب الفيديوهات. تحقق من الإنترنت.");
+                    status.setText("تعذر البحث عن «"+q+"» — جرّب إعادة المحاولة");
                     TextView problem=new TextView(this);
-                    problem.setText("تعذر الاتصال بمحرك البحث: "+why);
+                    problem.setText("تفاصيل المشكلة: "+why);
                     problem.setTextColor(0xFFFFB5B5);
                     problem.setTextSize(15);
                     problem.setPadding(dp(12),dp(15),dp(12),dp(15));
@@ -192,7 +190,7 @@ public final class HomeActivity extends Activity {
             }
         });
     }
-    private void displayResults(List<StreamInfoItem> list){
+    private void displayResults(List<YoutubeData.VideoResult> list){
         LinearLayout row=null;
         for(int i=0;i<list.size();i++){
             if(i%columns==0){
@@ -200,7 +198,7 @@ public final class HomeActivity extends Activity {
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 cards.addView(row,new LinearLayout.LayoutParams(-1,-2));
             }
-            final StreamInfoItem video=list.get(i);
+            final YoutubeData.VideoResult video=list.get(i);
             LinearLayout card=new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(dp(5),dp(6),dp(5),dp(12));
@@ -215,14 +213,10 @@ public final class HomeActivity extends Activity {
             preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
             picture.addView(preview,new FrameLayout.LayoutParams(-1,-1));
             card.addView(picture,new LinearLayout.LayoutParams(-1,dp(columns==1?195:columns==2?130:110)));
-            String url=null;
-            if(video.getThumbnails()!=null&&!video.getThumbnails().isEmpty()){
-                List<Image> thumbs=video.getThumbnails();
-                url=thumbs.get(thumbs.size()/2).getUrl();
-            }
-            if(url!=null)loadPreview(preview,url);
+            String url=video.thumbnail;
+            if(url!=null && !url.isEmpty())loadPreview(preview,url);
             TextView name=new TextView(this);
-            name.setText(video.getName());
+            name.setText(video.name);
             name.setTextColor(Color.WHITE);
             name.setTextSize(15);
             name.setMaxLines(2);
@@ -230,16 +224,16 @@ public final class HomeActivity extends Activity {
             name.setPadding(dp(3),dp(8),dp(3),dp(3));
             card.addView(name);
             TextView sub=new TextView(this);
-            String channel=video.getUploaderName();
-            sub.setText((channel==null?"فيديو":channel) + duration(video.getDuration()));
+            String channel=video.uploader;
+            sub.setText((channel==null||channel.isEmpty()?"فيديو":channel) + (video.duration.isEmpty()?"":"  •  "+video.duration));
             sub.setTextColor(MUTED);
             sub.setTextSize(12);
             sub.setMaxLines(1);
             card.addView(sub);
             card.setOnClickListener(v->{
                 Intent intent=new Intent(this,VideoActivity.class);
-                intent.putExtra("url",video.getUrl());
-                intent.putExtra("title",video.getName());
+                intent.putExtra("url",video.url);
+                intent.putExtra("title",video.name);
                 startActivity(intent);
             });
         }
