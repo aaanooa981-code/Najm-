@@ -92,7 +92,7 @@ s=replace_once(
 )
 # A control button is a normal ONE-TAP clickable item; don't reinterpret a
 # repeated tap on a button as a seek gesture on the video behind it.
-anchor="""                  if (mNajmGesture != null && mNajmGesture.onTouchEvent(event)) {"""
+anchor="if (mNajmGesture != null && mNajmGesture.onTouchEvent(event)) {"
 assert s.count(anchor)==1
 s=s.replace(anchor,"""                  if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                       android.view.View bottom = findViewById(R.id.najm_player_bottom);
