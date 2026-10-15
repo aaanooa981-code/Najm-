@@ -169,7 +169,7 @@ public final class YoutubeData {
             String dur=getText(v.optJSONObject("lengthText"));
             if(name.isEmpty())return null;
             return new VideoResult(name,"https://www.youtube.com/watch?v="+id,
-                channel,previewFrom(v.optJSONObject("thumbnail")),dur);
+                channel,"https://i.ytimg.com/vi/"+id+"/mqdefault.jpg",dur);
         }
         // YouTube sometimes returns lockupViewModel instead of videoRenderer.
         JSONObject lock=item.optJSONObject("lockupViewModel");
