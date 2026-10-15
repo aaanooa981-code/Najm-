@@ -38,7 +38,7 @@ jobs:
           sha256sum engine-lite/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-Lite-Engine-V1-APK
+          name: NAJM-Tube-Lite-Engine-V1.1-APK
           path: engine-lite/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 90
@@ -46,9 +46,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p downloads
-          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Lite-Engine-V1.apk
+          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Lite-Engine-V1.1.apk
           git config user.name "NAJM APK Builder"
           git config user.email "actions@users.noreply.github.com"
-          git add downloads/NAJM-Tube-Lite-Engine-V1.apk
+          git add downloads/NAJM-Tube-Lite-Engine-V1.1.apk
           git commit -m "Attach standalone NAJM Tube Lite Engine APK" || true
           git push origin HEAD:build-najm-lite-engine
