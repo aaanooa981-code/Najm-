@@ -29,6 +29,18 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms" || true
           ls "$ANDROID_HOME/build-tools" || true
+      - name: Import approved official NAJM Tube icon
+        run: |
+          set -euo pipefail
+          ICON=engine-lite/app/src/main/res/drawable-nodpi/najm_user_icon.png
+          mkdir -p "$(dirname "$ICON")"
+          if [ ! -s "$ICON" ]; then
+            curl -fLsS --retry 3 --connect-timeout 12 --max-time 45 \
+              "https://11a9516a-21ed-462b-bb1b-8bd26c438ed5.sandbox.floot.app/_cdn/static/f21b9214-ad7e-4e43-ad10-f7d6b662d13b-najm_tube_official_icon.png" \
+              -o "$ICON"
+          fi
+          file "$ICON"
+          test "$(stat -c%s "$ICON")" -gt 10000
       - name: Build independent APK
         run: gradle --project-dir engine-lite :app:assembleDebug --no-daemon --stacktrace
       - name: Validate APK format
@@ -49,6 +61,6 @@ jobs:
           cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Independent-V1-Search-Play.apk
           git config user.name "NAJM APK Builder"
           git config user.email "actions@users.noreply.github.com"
-          git add downloads/NAJM-Tube-Independent-V1-Search-Play.apk
-          git commit -m "Publish NAJM Tube Independent V1 APK" || true
+          git add downloads/NAJM-Tube-Independent-V1-Search-Play.apk engine-lite/app/src/main/res/drawable-nodpi/najm_user_icon.png
+          git commit -m "[skip ci] Publish NAJM Tube Independent V1 APK and official icon" || true
           git push origin HEAD:najm-tube-standalone-v1
