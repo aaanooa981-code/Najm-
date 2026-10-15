@@ -1,8 +1,8 @@
-name: NAJM Tube V2.1 UX QA and APK
+name: NAJM Tube V2.2 Player Performance QA
 on:
   push:
     branches:
-      - najm-tube-v2-1-ux
+      - najm-tube-v2-2-performance
   workflow_dispatch:
 jobs:
   apk:
@@ -937,6 +937,11 @@ jobs:
           python3 ci/najm_v21_ux.py
           python3 ci/test_najm_v21.py
           python3 -m py_compile ci/najm_v21_ux.py ci/test_najm_v21.py
+      - name: V2.2 player center and startup optimization QA
+        run: |
+          python3 ci/najm_v22_speed_player.py
+          python3 ci/test_najm_v22.py
+          python3 -m py_compile ci/najm_v22_speed_player.py ci/test_najm_v22.py
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
@@ -948,6 +953,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-V2.1-UX-build
+          name: NAJM-Tube-V2.2-Player-Performance
           path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
           if-no-files-found: warn
