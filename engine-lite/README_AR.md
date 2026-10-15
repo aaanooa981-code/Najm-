@@ -1,4 +1,12 @@
-# NAJM Tube Lite Engine – APK test build
+# نجم تيوب الجديد — مشروع مستقل
 
-This is a lightweight **direct media stream player** built with ExoPlayer v2.19.1.
-It handles direct MP4/HLS/DASH URLs (HTTP or HTTPS), not YouTube web-page URLs. 480p maximum for adaptive sources; no settings screen; touch + remote control. Android 4.4.2 (API 19) minimum; playback codecs and TLS may vary by device. Build with Gradle 8.7 and Android SDK 35. Debug APK is test-signed, not suitable for publishing to the Play Store.
+هذا التطبيق جديد بالكامل من ناحية الواجهة والشاشات ومشروع Android؛ ليس إعادة تسمية لبرنامج SmartTube.
+- معرّف مستقل: `com.najm.tubenew`، لا يستبدل النسخ السابقة.
+- شاشة البداية والبحث والنتائج والمشغل مبرمجة للتطبيق من الصفر.
+- محرك الفيديو: **ExoPlayer 2.19.1**، نفس المحرك المجرب سابقًا.
+- البحث واستخراج روابط البث من مكتبة **NewPipeExtractor** (GPLv3) بدل أخذ واجهة SmartTube أو نسخه.
+- الجودة 480p مفضلة، والرجوع إلى 360p أو جودة متاحة عند عدم توافر 480p.
+- Android 4.4.2+ مبدئيًا (توافق فعلي يعتمد على ترميزات الجهاز وTLS).
+- ملاحظة مهمة: قد توقف YouTube بعض طرق استخراج الروابط أو يتطلب تسجيل دخول؛ لذلك يلزم اختبار الأجهزة الفعلية والتحديث عند تغير المنصة.
+- كود التطبيق تحت GPLv3 تبعًا لرخصة NewPipeExtractor. مصادره متاحة في هذا الفرع.
+- نسخة Beta موقعة تجريبيًا، ولا يتوفر حاليًا تسجيل دخول يوتيوب أو توصيات شخصية.
