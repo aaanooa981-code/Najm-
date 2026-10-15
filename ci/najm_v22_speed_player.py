@@ -65,10 +65,10 @@ newrow='''                  <LinearLayout android:layout_width="match_parent" an
                   </LinearLayout>
 '''
 s=s[:begin]+newrow+s[end:]
-anchor='              <FrameLayout android:id="@+id/najm_player_controls"'
+anchor='<FrameLayout android:id="@+id/najm_player_controls"'
 assert s.count(anchor)==1
 # Put center control overlay INSIDE controls frame, but before bottom controls.
-target='                  <LinearLayout android:id="@+id/najm_player_bottom"'
+target='<LinearLayout android:id="@+id/najm_player_bottom"'
 s=one(s,target,center+target,"add center panel")
 layout.write_text(s)
 
