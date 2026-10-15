@@ -67,9 +67,11 @@ status='''<TextView android:id="@+id/najm_player_loading_hint"
               android:gravity="center" android:visibility="gone"
               android:contentDescription="حالة تحميل الفيديو" />
             '''
-anchor='<LinearLayout android:id="@+id/najm_player_center"'
-assert s.count(anchor)==1
-s=s.replace(anchor,status+anchor,1)
+# Status must be independent of auto-hidden transport overlay.
+# Put near the root end so it remains visible while buffering.
+end=s.rfind('</FrameLayout>')
+assert end > 0
+s=s[:end]+status+s[end:]
 ET.fromstring(s)
 layout.write_text(s)
 
