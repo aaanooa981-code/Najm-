@@ -1,6 +1,7 @@
 package com.najm.tubenew;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,6 +30,9 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.MergingMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.source.dash.DashMediaSource;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.ui.PlayerView;
@@ -45,13 +49,15 @@ public final class VideoActivity extends Activity {
     private FrameLayout stage;
     private LinearLayout center;
     private TextView status, heading;
-    private Button play;
+    private Button play, retryButton, webFallback;
     private SeekBar timeline;
     private ExoPlayer player;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private boolean scrubbing=false;
     private boolean destroyed=false;
     private String videoTitle;
+    private String videoUrl;
+    private final java.util.concurrent.atomic.AtomicInteger loadRequest = new java.util.concurrent.atomic.AtomicInteger();
     private long readyAt;
     private final Runnable hide = () -> {
         if(center!=null && player!=null && player.isPlaying())center.setVisibility(View.INVISIBLE);
@@ -73,6 +79,7 @@ public final class VideoActivity extends Activity {
         getWindow().setNavigationBarColor(Color.BLACK);
         videoTitle=getIntent().getStringExtra("title");
         String link=getIntent().getStringExtra("url");
+        videoUrl=link;
         if(link==null){finish();return;}
         createPlayer();
         createLayout();
@@ -101,8 +108,17 @@ public final class VideoActivity extends Activity {
                 if(state==Player.STATE_ENDED){status.setText("انتهى الفيديو");center.setVisibility(View.VISIBLE);}
             }
             @Override public void onPlayerError(PlaybackException error){
-                status.setText("تعذر تشغيل هذا الفيديو: "+error.getErrorCodeName());
-                center.setVisibility(View.VISIBLE);
+                String detail=error.getErrorCodeName();
+                Throwable cause=error;
+                while(cause!=null){
+                    if(cause instanceof HttpDataSource.InvalidResponseCodeException){
+                        int code=((HttpDataSource.InvalidResponseCodeException)cause).responseCode;
+                        detail="الخادم رفض تدفق الفيديو (HTTP "+code+")";
+                        break;
+                    }
+                    cause=cause.getCause();
+                }
+                showError("تعذر تشغيل الفيديو: "+detail);
             }
         });
     }
@@ -151,6 +167,19 @@ public final class VideoActivity extends Activity {
         heading.setSingleLine(true);heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
         heading.setPadding(dp(14),0,dp(8),0);
         top.addView(heading,new LinearLayout.LayoutParams(0,dp(45),1));
+        webFallback=button("مشغل بديل");
+        webFallback.setTextSize(12);
+        webFallback.setVisibility(View.GONE);
+        webFallback.setOnClickListener(v->openWebFallback());
+        top.addView(webFallback,new LinearLayout.LayoutParams(dp(110),dp(43)));
+        retryButton=button("إعادة");
+        retryButton.setTextSize(12);
+        retryButton.setVisibility(View.GONE);
+        retryButton.setOnClickListener(v->{
+            if(player!=null)player.stop();
+            resolveStream(videoUrl);
+        });
+        top.addView(retryButton,new LinearLayout.LayoutParams(dp(72),dp(43)));
         stage.addView(top,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
 
         center=new LinearLayout(this);
