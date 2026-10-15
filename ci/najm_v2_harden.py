@@ -57,22 +57,18 @@ s = replace_once(
 )
 s = replace_once(
     s,
-    """                  mNajmControls.setVisibility(View.VISIBLE);
-                  mNajmHandler.removeCallbacks(mNajmDismiss);""",
-    """                  mNajmControls.setVisibility(View.VISIBLE);
-                  if (mNajmMiniProgress != null) mNajmMiniProgress.setVisibility(View.GONE);
-                  mNajmHandler.removeCallbacks(mNajmDismiss);""",
+    "mNajmControls.setVisibility(View.VISIBLE);",
+    """mNajmControls.setVisibility(View.VISIBLE);
+                  if (mNajmMiniProgress != null) mNajmMiniProgress.setVisibility(View.GONE);""",
     "show main controls",
 )
 # Settings opens upstream transport; hide mini line so SmartTube's controls
 # are not visually stacked on top of our lightweight progress line.
 s = replace_once(
     s,
-    """                      mNajmControls.setVisibility(View.GONE);
-                      if (mPlaybackFragment != null) mPlaybackFragment.showControlsOverlay(false);""",
-    """                      mNajmControls.setVisibility(View.GONE);
-                      if (mNajmMiniProgress != null) mNajmMiniProgress.setVisibility(View.GONE);
-                      if (mPlaybackFragment != null) mPlaybackFragment.showControlsOverlay(false);""",
+    """mNajmOriginalMenuOpen = true;""",
+    """mNajmOriginalMenuOpen = true;
+                      if (mNajmMiniProgress != null) mNajmMiniProgress.setVisibility(View.GONE);""",
     "advanced player options",
 )
 # Avoid running UI updates every 800ms while invisible; still refresh the
