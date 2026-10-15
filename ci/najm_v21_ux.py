@@ -58,11 +58,13 @@ s=replace_once(
     "V2.1 settings and click-region fields",
 )
 # Dialog entry replaces the existing button handler but keeps advanced options.
-import re
-match=re.search(r'findViewById\\(R\\.id\\.najm_player_options\\)\\.setOnClickListener\\(v -> \\{.*?\\}\\);', s, re.S)
-assert match is not None, "player options click handler not found"
-assert "mNajmOriginalMenuOpen = true" in match.group(0)
-s=s[:match.start()]+"""findViewById(R.id.najm_player_options).setOnClickListener(v -> showNajmPlayerSettingsMenu());"""+s[match.end():]
+handler="findViewById(R.id.najm_player_options).setOnClickListener(v -> {"
+start=s.find(handler)
+assert start >= 0, "player settings handler not found"
+end=s.find("});", start)
+assert end > start and end - start < 1500, "player settings handler is unexpectedly complex"
+assert "mNajmOriginalMenuOpen = true" in s[start:end]
+s=s[:start]+"findViewById(R.id.najm_player_options).setOnClickListener(v -> showNajmPlayerSettingsMenu());"+s[end+3:]
 
 # Mini bar preference, initial state and dispatch event region.
 s=replace_once(
