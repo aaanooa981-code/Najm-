@@ -43,7 +43,7 @@ class NajmFastStartV24(unittest.TestCase):
         self.assertNotIn("Thread.sleep(",engine)
     def test_identity_and_brand_remain_independent(self):
         gradle=Path("SmartTube/smarttubetv/build.gradle").read_text()
-        self.assertIn('applicationId "org.smarttube.najmv3"',gradle)
+        self.assertIn('applicationId "org.smarttube.najmv4"',gradle)
         self.assertTrue((src/"main/res/mipmap-nodpi/najm_tube_icon.png").is_file())
         layout=(src/"main/res/layout/fragment_main.xml").read_text()
         self.assertIn("نجم تيوب",layout)
