@@ -1,8 +1,8 @@
-name: NAJM Tube Independent V1.1 Search Repair
+name: NAJM Tube Independent V1.2 Player Fix
 on:
   push:
     branches:
-      - najm-tube-standalone-v11-search-fix
+      - najm-tube-new-v12-player-fix
     paths:
       - 'engine-lite/**'
       - '.github/workflows/build-najm-lite-engine.yml'
@@ -43,6 +43,22 @@ jobs:
           test "$(stat -c%s "$ICON")" -gt 10000
       - name: Build independent APK
         run: gradle --project-dir engine-lite :app:assembleDebug --no-daemon --stacktrace
+      - name: Source preflight for independent player and search
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          home=Path("engine-lite/app/src/main/java/com/najm/tubenew/HomeActivity.java").read_text()
+          search=Path("engine-lite/app/src/main/java/com/najm/tubenew/YoutubeData.java").read_text()
+          player=Path("engine-lite/app/src/main/java/com/najm/tubenew/VideoActivity.java").read_text()
+          web=Path("engine-lite/app/src/main/java/com/najm/tubenew/WebPlayerActivity.java").read_text()
+          manifest=Path("engine-lite/app/src/main/AndroidManifest.xml").read_text()
+          assert "com.najm.tubenew" in manifest
+          assert "YoutubeData.search(q)" in home
+          assert "ytInitialData" in search and "SearchInfo.getInfo" in search
+          assert "DashMediaSource.Factory" in player and "MergingMediaSource" in player
+          assert "webFallback" in player and "WebView" in web
+          print("Source preflight OK: new home/search/native player and optional fallback")
+          PY
       - name: Validate APK format
         run: |
           test -s engine-lite/app/build/outputs/apk/debug/app-debug.apk
@@ -50,7 +66,7 @@ jobs:
           sha256sum engine-lite/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-Independent-V1.1-Search-Fix-APK
+          name: NAJM-Tube-Independent-V1.2-Player-Fix-APK
           path: engine-lite/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 90
@@ -58,9 +74,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p downloads
-          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Independent-V1.1-Search-Fix.apk
+          cp engine-lite/app/build/outputs/apk/debug/app-debug.apk downloads/NAJM-Tube-Independent-V1.2-Player-Fix.apk
           git config user.name "NAJM APK Builder"
           git config user.email "actions@users.noreply.github.com"
-          git add downloads/NAJM-Tube-Independent-V1.1-Search-Fix.apk engine-lite/app/src/main/res/drawable-nodpi/najm_user_icon.png
-          git commit -m "[skip ci] Publish NAJM Tube Independent V1 APK and official icon" || true
-          git push origin HEAD:najm-tube-standalone-v11-search-fix
+          git add downloads/NAJM-Tube-Independent-V1.2-Player-Fix.apk engine-lite/app/src/main/res/drawable-nodpi/najm_user_icon.png
+          git commit -m "[skip ci] Attach independently built V1.2 APK" || true
+          git push origin HEAD:najm-tube-new-v12-player-fix
