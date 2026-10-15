@@ -127,7 +127,7 @@ a=a.replace(anchor,anchor+'''
     private boolean mNajmReportedSlowVideo;
 ''',1)
 
-anchor='mNajmTitle=findViewById(R.id.najm_player_title);'
+anchor='mNajmControls = findViewById(R.id.najm_player_controls);'
 assert a.count(anchor)==1
 a=a.replace(anchor,anchor+'''
                   mNajmLoadingHint=findViewById(R.id.najm_player_loading_hint);''',1)
