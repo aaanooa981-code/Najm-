@@ -1,8 +1,8 @@
-name: Build NAJM SmartTube 32.03 APK
+name: NAJM Tube V2 QA and APK
 on:
   push:
     branches:
-      - smarttube-32-03-youtube-home-build
+      - najm-tube-v2-hardening
   workflow_dispatch:
 jobs:
   apk:
@@ -927,6 +927,11 @@ jobs:
           assert 'mPlayerGlue.next()' in original and 'mPlayerGlue.previous()' in original, "Underlying SmartTube queue actions have changed"
           print("Video previous and next: connected by one tap to the original SmartTube play queue")
           PY
+      - name: V2 hardening and preflight static audit
+        run: |
+          python3 ci/najm_v2_harden.py
+          python3 ci/test_najm_v2.py
+          python3 -m py_compile ci/najm_v2_harden.py ci/test_najm_v2.py
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
@@ -938,6 +943,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NAJM-SmartTube-32.03-build
+          name: NAJM-Tube-V2-QA-build
           path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
           if-no-files-found: warn
