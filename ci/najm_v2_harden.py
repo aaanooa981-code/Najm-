@@ -128,10 +128,8 @@ s = replace_once(
 )
 s = replace_once(
     s,
-    """java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
-                  mNajmChips.removeAllViews();""",
-    """java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
-                  String signature = names.toString();
+    "mNajmChips.removeAllViews();",
+    """String signature = names.toString();
                   if (signature.equals(mNajmLastChipsSignature)) return;
                   mNajmLastChipsSignature = signature;
                   mNajmChips.removeAllViews();""",
