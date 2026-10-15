@@ -71,26 +71,26 @@ s = replace_once(
                       if (mNajmMiniProgress != null) mNajmMiniProgress.setVisibility(View.GONE);""",
     "advanced player options",
 )
-# Avoid running UI updates every 800ms while invisible; still refresh the
-# always-on red timeline at a modest frequency.
+# Run fewer UI refreshes when the control bar is hidden.
 s = replace_once(
-    s,
-    """                      mNajmHandler.postDelayed(this, 800);""",
-    """                      mNajmHandler.postDelayed(this,
+    s, "mNajmHandler.postDelayed(this, 800);",
+    """mNajmHandler.postDelayed(this,
                           mNajmControls != null && mNajmControls.getVisibility() == View.VISIBLE
                               ? 700L : 1500L);""",
     "refresh interval",
 )
-# Do not rebuild text widgets unless values genuinely changed.
+# Avoid resetting TextView text on every refresh when it has not changed.
 s = replace_once(
-    s,
-    """                          mNajmTiming.setText(najmClock(position) + " / " + najmClock(duration));
-                          mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");""",
-    """                          String timeText = najmClock(position) + " / " + najmClock(duration);
-                          if (!timeText.contentEquals(mNajmTiming.getText())) mNajmTiming.setText(timeText);
-                          String toggleText = mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶";
+    s, 'mNajmTiming.setText(najmClock(position) + " / " + najmClock(duration));',
+    """String timeText = najmClock(position) + " / " + najmClock(duration);
+                          if (!timeText.contentEquals(mNajmTiming.getText())) mNajmTiming.setText(timeText);""",
+    "time label UI updates",
+)
+s = replace_once(
+    s, 'mNajmToggle.setText(mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶");',
+    """String toggleText = mPlaybackFragment.najmPlaying() ? "Ⅱ" : "▶";
                           if (!toggleText.contentEquals(mNajmToggle.getText())) mNajmToggle.setText(toggleText);""",
-    "reduce text invalidations",
+    "play pause label UI updates",
 )
 player.write_text(s)
 
@@ -121,16 +121,16 @@ search.write_text(s)
 s = browse.read_text()
 s = replace_once(
     s,
-    """    private android.widget.LinearLayout mNajmChips;""",
-    """    private android.widget.LinearLayout mNajmChips;
+    "private android.widget.LinearLayout mNajmChips;",
+    """private android.widget.LinearLayout mNajmChips;
     private String mNajmLastChipsSignature;""",
     "home chips cache member",
 )
 s = replace_once(
     s,
-    """                  java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
+    """java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
                   mNajmChips.removeAllViews();""",
-    """                  java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
+    """java.util.List<String> names = mNajmBrowse.getHomeNavigationSections();
                   String signature = names.toString();
                   if (signature.equals(mNajmLastChipsSignature)) return;
                   mNajmLastChipsSignature = signature;
