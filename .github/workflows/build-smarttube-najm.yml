@@ -1,8 +1,8 @@
-name: NAJM Tube V2.6 Fast Browse
+name: NAJM Tube V2.7 Simple 480p
 on:
   push:
     branches:
-      - najm-tube-v2-6-speed
+      - najm-tube-v2-7-locked-480p
   workflow_dispatch:
 jobs:
   apk:
@@ -966,6 +966,12 @@ jobs:
           python3 ci/najm_v26_speed.py
           python3 ci/test_najm_v26.py
           python3 -m py_compile ci/najm_v26_speed.py ci/test_najm_v26.py
+      - name: Lock video to 480p, simplify UI and run quality tests
+        run: |
+          python3 ci/najm_v27_quality.py
+          python3 ci/najm_v27_simple_mode.py
+          python3 ci/test_najm_v27.py
+          python3 -m py_compile ci/najm_v27_quality.py ci/najm_v27_simple_mode.py ci/test_najm_v27.py
       - name: Build installable debug APK
         run: |
           # Firebase configuration belongs to upstream package; separate fork must not use it
@@ -977,6 +983,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NAJM-Tube-V2.6-Fast-Browse
+          name: NAJM-Tube-V2.7-Simple-480p
           path: SmartTube/smarttubetv/build/outputs/apk/stbeta/debug/*.apk
           if-no-files-found: warn
