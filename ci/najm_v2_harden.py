@@ -13,6 +13,7 @@ player = java / "ui/playback/PlaybackActivity.java"
 player_fragment = java / "ui/playback/PlaybackFragment.java"
 browse = java / "ui/browse/BrowseActivity.java"
 search = java / "ui/search/tags/vineyard/SearchTagsFragmentBase.java"
+touch = java / "ui/common/LeanbackActivity.java"
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
     found = source.count(old)
@@ -149,5 +150,22 @@ s = replace_once(
     "touch-only Android devices",
 )
 manifest.write_text(s)
+
+# Touch dispatch used to allocate a new Rect for every nested view checked
+# on each ACTION_DOWN and ACTION_UP. A single reusable Rect avoids temporary
+# allocation/GC pressure on low-memory car Android devices without altering
+# the existing single-tap, drag or long-press behavior.
+s = touch.read_text()
+s = replace_once(
+    s, "private View mNajmTouchTarget;",
+    "private View mNajmTouchTarget;\n    private final Rect mNajmHitRect = new Rect();",
+    "reuse touch hit rectangle",
+)
+s = replace_once(
+    s, "Rect rect = new Rect();",
+    "Rect rect = mNajmHitRect;",
+    "remove repeated touch hit rectangle allocations",
+)
+touch.write_text(s)
 
 print("NAJM Tube V2 hardening applied: lifecycle, progress, UI churn, search, touch compatibility.")
