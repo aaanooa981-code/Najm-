@@ -107,4 +107,12 @@ s=s.replace(needle,'''                          if (which==0) chooseNajmAutoHide
                           } else {''',1)
 activity.write_text(s)
 
+# Each cloud build uses a new debug signing key. Install alongside V2.3
+# instead of Android rejecting the same package with a different certificate.
+gradle=base/"smarttubetv/build.gradle"
+g=gradle.read_text()
+assert g.count('applicationId "org.smarttube.najmv3"')==1
+gradle.write_text(g.replace('applicationId "org.smarttube.najmv3"',
+                            'applicationId "org.smarttube.najmv4"',1))
+
 print("NAJM V2.4: launcher name نجم تيوب in all flavors, fast start switch, low-risk source READY logs.")
